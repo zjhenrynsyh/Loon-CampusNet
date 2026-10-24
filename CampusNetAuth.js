@@ -210,7 +210,7 @@ async function login(portal) {
   // 拉登录页解析 RSA 公钥（失败自动重试一次；portal 偶发返回 88 字节的
   // GBK 弹窗页「WEB认证设备未注册…」，重试通常可恢复）
   let exp = "", mod = "";
-  for (let attempt = 1; attempt <= 2 && !exp; attempt++) {
+  for (let attempt = 1; attempt <= 2 && (!exp || !mod); attempt++) {
     const page = await fetchLoginPage(portal);
     if (page.error) { console.log("登录页请求失败(" + attempt + "): " + page.error); continue; }
     exp = grab(page.html, "publicKeyExponent");
@@ -291,7 +291,13 @@ async function login(portal) {
   }
 
   console.log("检测到离线，开始认证: " + probe.portal.slice(0, 120));
-  const r = await login(probe.portal);
+  let r = await login(probe.portal);
+  // 「设备未注册 / 网关未放行」多为瞬时故障（或深夜断网时段），等 3 秒重试一次
+  if (!r.ok && /未注册|未放行/.test(r.msg)) {
+    console.log("疑似瞬时故障，3 秒后重试一次");
+    await new Promise((res) => setTimeout(res, 3000));
+    r = await login(probe.portal);
+  }
   if (r.ok) {
     notify("校园网助手", "✅ 认证成功",
            CONFIG.user + "（服务: " + r.svc + "）\n手机已恢复上网");
