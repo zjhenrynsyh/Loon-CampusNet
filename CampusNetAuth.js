@@ -224,37 +224,8 @@ async function fetchLoginPage(portal) {
 
 /* ---------------- 登录 ---------------- */
 
-async function login(portal) {
-  const q = portal.indexOf("?") >= 0 ? portal.slice(portal.indexOf("?") + 1) : "";
-
-  // 拉登录页解析 RSA 公钥（失败自动重试一次；portal 偶发返回 88 字节的
-  // GBK 弹窗页「WEB认证设备未注册…」，重试通常可恢复）
-  let exp = "", mod = "";
-  for (let attempt = 1; attempt <= 2 && (!exp || !mod); attempt++) {
-    const page = await fetchLoginPage(portal);
-    if (page.error) { console.log("登录页请求失败(" + attempt + "): " + page.error); continue; }
-    exp = grab(page.html, "publicKeyExponent") || grabVar(page.html, "publicKeyExponent");
-    mod = grab(page.html, "publicKeyModulus") || grabVar(page.html, "publicKeyModulus");
-    if (!exp || !mod) {
-      const text = (page.html || "(空)").replace(/\s+/g, " ");
-      console.log("登录页未含公钥(" + attempt + "), HTTP " + page.status + ", 长度 " + text.length);
-      // 精准诊断：页面里所有 publickey 字样的上下文 + head 区前 400 字符
-      const re = /publickey/gi;
-      let m2, n = 0;
-      while ((m2 = re.exec(text)) && n < 3) {
-        console.log("关键词[" + n + "]: ..." + text.slice(Math.max(0, m2.index - 150), m2.index + 250) + "...");
-        n++;
-      }
-      if (n === 0) console.log("页面无 publickey 字样, head: " + text.slice(0, 400));
-    }
-  }
-  if (!exp || !mod) return { ok: false, msg: "登录页解析失败（未取到 RSA 公钥，详见日志）" };
-
-  // mac 取认证页 URL 参数（缺省 111111111，与门户前端一致）
-  const mac = queryParam(q, "mac") || queryParam(q, "wlanparameter") || "111111111";
-  const pwd = rsaEncryptHex(utf8Bytes(strReverse(CONFIG.password + ">" + mac)), exp, mod);
-  if (!pwd) return { ok: false, msg: "RSA 加密失败（密码过长？）" };
-
+// 提交登录（pwd 为已确定内容的密码明文，encrypt: "true"=RSA hex / "false"=明文）
+async function submitLogin(q, pwd, encrypt) {
   for (const svc of CONFIG.serviceOrder) {
     const body = [
       ["userId", dEnc(CONFIG.user)],
@@ -264,7 +235,7 @@ async function login(portal) {
       ["operatorPwd", ""],
       ["operatorUserId", ""],
       ["validcode", ""],
-      ["passwordEncrypt", dEnc("true")],
+      ["passwordEncrypt", dEnc(encrypt)],
     ].map((kv) => kv[0] + "=" + kv[1]).join("&");
 
     const r = await httpPost("http://" + CONFIG.gateway + "/eportal/InterFace.do?method=login", body);
@@ -287,6 +258,40 @@ async function login(portal) {
     console.log("服务「" + svc + "」不通: " + msg + "，尝试下一个");
   }
   return { ok: false, msg: "全部服务尝试失败" };
+}
+
+async function login(portal) {
+  const q = portal.indexOf("?") >= 0 ? portal.slice(portal.indexOf("?") + 1) : "";
+
+  // 拉登录页解析 RSA 公钥（失败自动重试一次；portal 偶发返回 88 字节的
+  // GBK 弹窗页「WEB认证设备未注册…」，重试通常可恢复）
+  let exp = "", mod = "", html = "";
+  for (let attempt = 1; attempt <= 2 && (!exp || !mod); attempt++) {
+    const page = await fetchLoginPage(portal);
+    if (page.error) { console.log("登录页请求失败(" + attempt + "): " + page.error); continue; }
+    html = page.html;
+    exp = grab(html, "publicKeyExponent") || grabVar(html, "publicKeyExponent");
+    mod = grab(html, "publicKeyModulus") || grabVar(html, "publicKeyModulus");
+    if (!exp || !mod) {
+      console.log("登录页公钥为空(" + attempt + "), HTTP " + page.status + ", 长度 " + html.length);
+      const srcs = [...html.matchAll(/<script[^>]*src\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1]);
+      if (srcs.length) console.log("页面脚本: " + srcs.slice(0, 6).join(" | "));
+      const methods = [...new Set(html.match(/InterFace\.do\?method=\w+/g) || [])];
+      if (methods.length) console.log("页面接口: " + methods.join(", "));
+    }
+  }
+
+  if (exp && mod) {
+    // mac 取认证页 URL 参数（缺省 111111111，与门户前端一致）
+    const mac = queryParam(q, "mac") || queryParam(q, "wlanparameter") || "111111111";
+    const pwd = rsaEncryptHex(utf8Bytes(strReverse(CONFIG.password + ">" + mac)), exp, mod);
+    if (!pwd) return { ok: false, msg: "RSA 加密失败（密码过长？）" };
+    return await submitLogin(q, pwd, "true");
+  }
+
+  // 公钥为空（本部署由浏览器 JS 动态填充）→ 退回明文密码模式（passwordEncrypt=false）
+  console.log("公钥不可用，改用明文密码模式（passwordEncrypt=false）");
+  return await submitLogin(q, CONFIG.password, "false");
 }
 
 /* ---------------- 主流程 ---------------- */
