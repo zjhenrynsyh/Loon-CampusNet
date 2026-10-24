@@ -35,10 +35,10 @@ DOMAIN,captive.apple.com,DIRECT
 
 [Script]
 # 定时检测：检测频率可在上方「定时检测频率」里改（已在线时静默退出，零流量）
-cron ${cronExpression} then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=2", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(定时)", timeout=300
+cron ${cronExpression} then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=3", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(定时)", timeout=300
 # 切网触发：连上校园网 WiFi 的瞬间立即认证（不用等定时器）
-network-changed then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=2", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(切网触发)", timeout=300
+network-changed then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=3", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(切网触发)", timeout=300
 
 # —— 旧版 Loon（3.2.1~3.5.0，Build 733+）兼容写法，二选一 ——
-# cron ${cronExpression} script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=2, tag=校园网自动认证(定时), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
-# network-changed script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=2, tag=校园网自动认证(切网触发), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
+# cron ${cronExpression} script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=3, tag=校园网自动认证(定时), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
+# network-changed script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=3, tag=校园网自动认证(切网触发), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
