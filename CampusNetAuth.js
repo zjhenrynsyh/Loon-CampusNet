@@ -98,11 +98,23 @@ function utf8Bytes(str) {
   return out;
 }
 
-// 从登录页 HTML 抓隐藏域（id 或 name 匹配，value 为 hex）
+// 从登录页 HTML 抓隐藏域（id 或 name 匹配，value 为 hex；value 在前在后都兼容）
 function grab(html, id) {
-  const m = html.match(new RegExp('id\\s*=\\s*["\']?' + id + '["\']?[^>]*?value\\s*=\\s*["\']([0-9a-fA-F]+)["\']', "i"))
-        || html.match(new RegExp('name\\s*=\\s*["\']?' + id + '["\']?[^>]*?value\\s*=\\s*["\']([0-9a-fA-F]+)["\']', "i"));
+  const m = html.match(new RegExp('(?:id|name)\\s*=\\s*["\']?' + id + '["\']?[^>]*?value\\s*=\\s*["\']?([0-9a-fA-F]+)', "i"))
+        || html.match(new RegExp('value\\s*=\\s*["\']?([0-9a-fA-F]+)["\']?[^>]*?(?:id|name)\\s*=\\s*["\']?' + id, "i"));
   return m ? m[1] : "";
+}
+
+// 页面内跳转检测（meta refresh / JS location，仅对跳转壳小页面有意义）
+function pageRedirect(html) {
+  if (html.length > 3000) return null;           // 真登录页很大，不误判
+  let m = html.match(/http-equiv\s*=\s*["']?refresh["']?[^>]*?url\s*=\s*([^"'>\s]+)/i);
+  if (m) return m[1].replace(/['"]$/, "").trim();
+  m = html.match(/location\.(?:href|replace)\s*[\(=]\s*["']([^"']+)["']/i);
+  if (m) return m[1];
+  m = html.match(/window\.location\s*=\s*["']([^"']+)["']/i);
+  if (m) return m[1];
+  return null;
 }
 
 // 从 query string 取参数（单次解码足够，mac 是 hex 值）
@@ -187,7 +199,7 @@ async function captiveProbe() {
   return { online: false, reason: "HTTP " + r.status };
 }
 
-// 手动跟随重定向拉登录页（auto-redirect:false 下 portal 可能 302 跳转）
+// 手动跟随重定向拉登录页（3xx Location + 页面内 meta refresh / JS 跳转都跟）
 async function fetchLoginPage(portal) {
   let url = portal;
   for (let i = 0; i < 3; i++) {
@@ -197,6 +209,8 @@ async function fetchLoginPage(portal) {
       const loc = header(page.headers, "Location");
       if (loc) { url = absPortal(loc); continue; }
     }
+    const redir = pageRedirect(page.body || "");
+    if (redir) { url = absPortal(redir); continue; }
     return { status: page.status, html: page.body || "" };
   }
   return { error: "重定向次数过多" };
@@ -216,8 +230,13 @@ async function login(portal) {
     exp = grab(page.html, "publicKeyExponent");
     mod = grab(page.html, "publicKeyModulus");
     if (!exp || !mod) {
-      console.log("登录页未含公钥(" + attempt + "), HTTP " + page.status +
-                  ", 内容: " + (page.html || "(空)").replace(/\s+/g, " ").slice(0, 140));
+      const text = (page.html || "(空)").replace(/\s+/g, " ");
+      console.log("登录页未含公钥(" + attempt + "), HTTP " + page.status + ", 长度 " + text.length);
+      const bodyIdx = text.search(/<body/i);
+      const dump = bodyIdx >= 0 ? text.slice(bodyIdx) : text;
+      for (let i = 0; i < dump.length && i < 2400; i += 400) {
+        console.log("页面[" + i + "]: " + dump.slice(i, i + 400));
+      }
     }
   }
   if (!exp || !mod) return { ok: false, msg: "登录页解析失败（未取到 RSA 公钥，详见日志）" };
