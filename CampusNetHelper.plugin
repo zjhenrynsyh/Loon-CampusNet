@@ -1,0 +1,44 @@
+#!name = 校园网助手
+#!desc = 手机端校园网自动认证（锐捷/深澜 ePortal V3）。连上校园网 WiFi 自动登录、掉线自动重连。导入插件后在「设置」里填写学号密码即可，无需改任何文件。需 Loon 3.5.1(983)+。
+#!author = zjhenry
+#!date = 2026-10-25
+#!openUrl = http://172.16.54.18
+#!tag = 校园网
+
+# ============================================================
+# 使用步骤：
+#   1. 在 Loon → 配置 → 插件 → 右上角 + → 从 URL 安装，
+#      粘贴 https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelper.plugin
+#      （或从本地文件导入本插件，脚本会自动从 GitHub 拉取，无需单独导入 js）
+#   2. 在插件「设置」里填写学号和密码
+#   3. 启用插件即可；下方 [Rule] 的 DIRECT 规则在分流开启时保证探测不被代理
+#
+# 说明：
+#   · 脚本托管于 GitHub，script-path 为 raw 直链，插件升级只需改仓库文件。
+#   · [Argument] 参数（含账号密码）仅保存在本机 Loon 配置里，不会上传。
+#   · 旧版 Loon（3.2.1~3.5.0）请把 [Script] 两行换成注释里的旧语法。
+# ============================================================
+
+[Argument]
+user = input,"",type=string,tag=学号,desc=校园网账号（必填）
+password = input,"",type=string,tag=密码,desc=校园网密码（必填，仅保存在本机）
+gateway = input,"172.16.54.18",type=string,tag=认证网关,desc=认证服务器地址，湖北工大默认 172.16.54.18
+serviceOrder = select,"LT default YD DX","default LT YD DX","YD LT default DX","DX LT default YD",type=string,tag=服务尝试顺序,desc=LT=联通 default=校园网 YD=移动 DX=电信，不通自动换下一个
+cronExpression = input,"0 6-23/10 * * *",type=string,tag=定时检测频率,desc=Cron 表达式，默认 6:00-23:59 每 10 分钟检测一次是否掉线
+notifyFail = switch,true,tag=失败也弹通知,desc=关闭后仅认证成功时弹通知
+
+[Rule]
+# 认证网关与探测域名强制直连，防止 Loon 代理干扰 captive 探测
+IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+DOMAIN-SUFFIX,msftconnecttest.com,DIRECT
+DOMAIN,captive.apple.com,DIRECT
+
+[Script]
+# 定时检测：检测频率可在上方「定时检测频率」里改（已在线时静默退出，零流量）
+cron ${cronExpression} then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(定时)", timeout=300
+# 切网触发：连上校园网 WiFi 的瞬间立即认证（不用等定时器）
+network-changed then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(切网触发)", timeout=300
+
+# —— 旧版 Loon（3.2.1~3.5.0，Build 733+）兼容写法，二选一 ——
+# cron ${cronExpression} script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js, tag=校园网自动认证(定时), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
+# network-changed script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js, tag=校园网自动认证(切网触发), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
