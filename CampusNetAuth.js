@@ -187,15 +187,40 @@ async function captiveProbe() {
   return { online: false, reason: "HTTP " + r.status };
 }
 
+// 手动跟随重定向拉登录页（auto-redirect:false 下 portal 可能 302 跳转）
+async function fetchLoginPage(portal) {
+  let url = portal;
+  for (let i = 0; i < 3; i++) {
+    const page = await httpGet(url);
+    if (page.error) return { error: page.error };
+    if (page.status >= 300 && page.status < 400) {
+      const loc = header(page.headers, "Location");
+      if (loc) { url = absPortal(loc); continue; }
+    }
+    return { status: page.status, html: page.body || "" };
+  }
+  return { error: "重定向次数过多" };
+}
+
 /* ---------------- 登录 ---------------- */
 
 async function login(portal) {
   const q = portal.indexOf("?") >= 0 ? portal.slice(portal.indexOf("?") + 1) : "";
-  const page = await httpGet(portal);
-  const html = page.body || "";
-  const exp = grab(html, "publicKeyExponent");
-  const mod = grab(html, "publicKeyModulus");
-  if (!exp || !mod) return { ok: false, msg: "登录页解析失败（未取到 RSA 公钥）" };
+
+  // 拉登录页解析 RSA 公钥（失败自动重试一次；portal 偶发返回 88 字节的
+  // GBK 弹窗页「WEB认证设备未注册…」，重试通常可恢复）
+  let exp = "", mod = "";
+  for (let attempt = 1; attempt <= 2 && !exp; attempt++) {
+    const page = await fetchLoginPage(portal);
+    if (page.error) { console.log("登录页请求失败(" + attempt + "): " + page.error); continue; }
+    exp = grab(page.html, "publicKeyExponent");
+    mod = grab(page.html, "publicKeyModulus");
+    if (!exp || !mod) {
+      console.log("登录页未含公钥(" + attempt + "), HTTP " + page.status +
+                  ", 内容: " + (page.html || "(空)").replace(/\s+/g, " ").slice(0, 140));
+    }
+  }
+  if (!exp || !mod) return { ok: false, msg: "登录页解析失败（未取到 RSA 公钥，详见日志）" };
 
   // mac 取认证页 URL 参数（缺省 111111111，与门户前端一致）
   const mac = queryParam(q, "mac") || queryParam(q, "wlanparameter") || "111111111";
@@ -271,6 +296,7 @@ async function login(portal) {
     notify("校园网助手", "✅ 认证成功",
            CONFIG.user + "（服务: " + r.svc + "）\n手机已恢复上网");
   } else if (CONFIG.notifyFail) {
+    console.log("认证失败: " + r.msg);
     notify("校园网助手", "❌ 认证失败", r.msg);
   } else {
     console.log("认证失败: " + r.msg);
