@@ -36,8 +36,8 @@ const CONFIG = {
 };
 // ======================================================
 
-const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
-           "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
+const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+// 用桌面 UA：portal 给 iPhone UA 返回手机版页面（无 RSA 公钥隐藏域），给桌面 UA 返回 PC 版页面（有公钥）
 
 /* ---------------- HTTP（$httpClient Promise 封装） ----------------
  * ⚠️ Loon 禁止跟随重定向的参数是 "auto-redirect": false（Build 660+），
@@ -115,6 +115,12 @@ function pageRedirect(html) {
   m = html.match(/window\.location\s*=\s*["']([^"']+)["']/i);
   if (m) return m[1];
   return null;
+}
+
+// JS 变量形式的公钥兜底（部分页面不走隐藏域：var publicKeyExponent="10001"）
+function grabVar(html, name) {
+  const m = html.match(new RegExp('["\\\']?\\b' + name + '\\b["\\\']?\\s*[:=]\\s*["\\\']([0-9a-fA-F]+)', "i"));
+  return m ? m[1] : "";
 }
 
 // 从 query string 取参数（单次解码足够，mac 是 hex 值）
@@ -227,16 +233,19 @@ async function login(portal) {
   for (let attempt = 1; attempt <= 2 && (!exp || !mod); attempt++) {
     const page = await fetchLoginPage(portal);
     if (page.error) { console.log("登录页请求失败(" + attempt + "): " + page.error); continue; }
-    exp = grab(page.html, "publicKeyExponent");
-    mod = grab(page.html, "publicKeyModulus");
+    exp = grab(page.html, "publicKeyExponent") || grabVar(page.html, "publicKeyExponent");
+    mod = grab(page.html, "publicKeyModulus") || grabVar(page.html, "publicKeyModulus");
     if (!exp || !mod) {
       const text = (page.html || "(空)").replace(/\s+/g, " ");
       console.log("登录页未含公钥(" + attempt + "), HTTP " + page.status + ", 长度 " + text.length);
-      const bodyIdx = text.search(/<body/i);
-      const dump = bodyIdx >= 0 ? text.slice(bodyIdx) : text;
-      for (let i = 0; i < dump.length && i < 2400; i += 400) {
-        console.log("页面[" + i + "]: " + dump.slice(i, i + 400));
+      // 精准诊断：页面里所有 publickey 字样的上下文 + head 区前 400 字符
+      const re = /publickey/gi;
+      let m2, n = 0;
+      while ((m2 = re.exec(text)) && n < 3) {
+        console.log("关键词[" + n + "]: ..." + text.slice(Math.max(0, m2.index - 150), m2.index + 250) + "...");
+        n++;
       }
+      if (n === 0) console.log("页面无 publickey 字样, head: " + text.slice(0, 400));
     }
   }
   if (!exp || !mod) return { ok: false, msg: "登录页解析失败（未取到 RSA 公钥，详见日志）" };
