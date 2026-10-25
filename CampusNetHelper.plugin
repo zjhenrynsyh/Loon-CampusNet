@@ -24,7 +24,7 @@ user = input,"",type=string,tag=学号,desc=校园网账号（必填）
 password = input,"",type=string,tag=密码,desc=校园网密码（必填，仅保存在本机）
 gateway = input,"172.16.54.18",type=string,tag=认证网关,desc=认证服务器地址，湖北工大默认 172.16.54.18
 serviceOrder = select,"LT default YD DX","default LT YD DX","YD LT default DX","DX LT default YD",type=string,tag=服务尝试顺序,desc=LT=联通 default=校园网 YD=移动 DX=电信，不通自动换下一个
-cronExpression = input,"0 6-23/10 * * *",type=string,tag=定时检测频率,desc=Cron 表达式，默认 6:00-23:59 每 10 分钟检测一次是否掉线
+cronExpression = input,"*/3 * * * *",type=string,tag=定时检测频率,desc=Cron 表达式，默认全天每 3 分钟检测一次是否断网（已在线时静默退出几乎零开销）
 notifyFail = switch,true,tag=失败也弹通知,desc=关闭后仅认证成功时弹通知
 
 [Rule]
@@ -35,10 +35,10 @@ DOMAIN,captive.apple.com,DIRECT
 
 [Script]
 # 定时检测：检测频率可在上方「定时检测频率」里改（已在线时静默退出，零流量）
-cron ${cronExpression} then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=5", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(定时)", timeout=300
+cron ${cronExpression} then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=6", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(定时)", timeout=300
 # 切网触发：连上校园网 WiFi 的瞬间立即认证（不用等定时器）
-network-changed then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=5", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(切网触发)", timeout=300
+network-changed then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=6", {${gateway}, ${user}, ${password}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(切网触发)", timeout=300
 
 # —— 旧版 Loon（3.2.1~3.5.0，Build 733+）兼容写法，二选一 ——
-# cron ${cronExpression} script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=5, tag=校园网自动认证(定时), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
-# network-changed script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=5, tag=校园网自动认证(切网触发), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
+# cron ${cronExpression} script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=6, tag=校园网自动认证(定时), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
+# network-changed script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=6, tag=校园网自动认证(切网触发), enable=true, argument=[{gateway},{user},{password},{serviceOrder},{notifyFail}]
