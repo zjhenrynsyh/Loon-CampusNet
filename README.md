@@ -1,42 +1,45 @@
-# 校园网助手（三端同源）
+# 校园网助手 · Loon 插件
 
-校园网自动认证，覆盖 **macOS / iOS(Loon) / Android(KernelSU)** 三个平台。
-协议：锐捷/深澜 RG-SAM+ ePortal V3（本校门户使用**明文密码模式** `passwordEncrypt=false`）。
+iPhone 上自动登录校园网（锐捷/深澜 RG-SAM+ ePortal V3）。
 
-## 目录
+- 连上校园网 WiFi → 自动认证；掉线后定时检测 → 自动重连
+- 非校园网 WiFi / 蜂窝数据 → 直接跳过（零流量）
+- 账号密码在插件「设置」里填写，只存本机
 
-| 目录 | 内容 |
-|---|---|
-| `CampusNetHelper.plugin` | iOS Loon 插件（账号密码在插件设置里填写，`script-path` 指向本仓库脚本） |
-| `CampusNetAuth.js` | Loon 认证脚本（自动跟随版本，URL 带 `?v=N` 防缓存） |
-| `android-ksu/` | Android KernelSU 模块源码 + 安装包 `CampusNetKSU-v1.0.zip` |
-| `docs/overview.md` | **三端实现总览：协议不变量、平台差异、同步矩阵、验证清单** |
-| macOS App | 未公开（本地构建，DMG 分发） |
+## 安装
 
-## iOS（Loon）
-
-Loon → 配置 → 插件 → `+` → 从 URL 安装：
+Loon → 配置 → 插件 → 右上角 `+` → 从 URL 安装：
 
 ```
 https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelper.plugin
 ```
 
-安装后在插件「设置」里填写学号、密码、校园网 WiFi 名称即可。
-Loon 3.5.1(983)+，iOS 14+。
+装好后进插件「设置」填：学号、密码、校园网 WiFi 名称（默认 `iHBUT`）。
 
-## Android（KernelSU）
+要求：Loon 3.5.1(983)+、iOS 14+。
 
-下载 [`android-ksu/CampusNetKSU-v1.0.zip`](android-ksu/CampusNetKSU-v1.0.zip) → 模块管理器「从本地安装」→ 重启
-→ 编辑 `/data/adb/campusnet/config.conf` 填写学号密码。
+## 文件
 
-## 共同特性
+| 文件 | 说明 |
+|---|---|
+| `CampusNetHelper.plugin` | 插件本体（`[Argument]` 设置项、`[Rule]` 直连规则、`[Script]` 触发） |
+| `CampusNetAuth.js` | 认证脚本（插件通过 `script-path` 引用，URL 带 `?v=N` 防缓存） |
 
-- WiFi 名称判断（非校园网零流量跳过）
-- 掉线自动重连（切网秒级 + 定时轮询）
-- 门户返回 success 后二次探测验收，避免「假成功」
-- 服务顺序自动回退（联通 → 校园网 → 移动 → 电信）
-- 失败通知节流，不刷屏
+## 认证方式
+
+本校门户登录页的 `passwordEncrypt` 为 `false`（RSA 公钥字段为空、由浏览器 JS 动态填充），
+因此脚本使用门户原生支持的**明文密码模式**提交，与浏览器未启用加密时的行为一致。
+密码仅在校园网内网 HTTP 中传输，不会上传任何服务器。
+
+## 触发策略
+
+| 触发 | 频率 | 行为 |
+|---|---|---|
+| `network-changed` | 切网瞬间 | 连上校园网 WiFi 立即认证 |
+| `cron` | 全天每 2 分钟 | 检测掉线并重连（不在校园网时零请求） |
+
+失败通知 10 分钟最多一条，避免刷屏；日志可在 Loon 脚本页面查看。
 
 ## 说明
 
-账号密码只保存在设备本地，不上传任何服务器。明文密码仅在校园网内网传输，与浏览器未启用加密时的行为一致。
+macOS 版与 Android 版为本项目同源实现，但都是本地安装（不需远程 URL），不在此仓库公开。

@@ -1,6 +1,0 @@
-id=campusnet-autologin
-name=校园网自动认证
-version=v1.0
-versionCode=1
-author=zjhenry
-description=连上校园网 WiFi 自动登录（锐捷/深澜 ePortal V3 · 明文密码模式）。开机常驻守护，SSID 判断 + 定时检测断线自动重连。配置文件：/data/adb/campusnet/config.conf，日志：/data/adb/campusnet/log.txt
