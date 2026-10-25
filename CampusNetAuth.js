@@ -90,6 +90,25 @@ function notify(title, subtitle, body) {
   $notification.post(title, subtitle || "", body || "");
 }
 
+// 失败通知节流：定时器每 2 分钟跑一次，密码错等情况避免刷屏（10 分钟最多一条）
+const FAIL_KEY = "campusnet_last_fail_notify";
+function notifyFailOnce(subtitle, body) {
+  try {
+    const now = Date.now();
+    const last = +($persistentStore.read(FAIL_KEY) || 0);
+    if (now - last < 10 * 60 * 1000) {
+      console.log("失败通知已节流（10 分钟内只弹一次），本次原因: " + body);
+      return;
+    }
+    $persistentStore.write(String(now), FAIL_KEY);
+  } catch (e) { /* 存储不可用时照常通知 */ }
+  notify("校园网助手", subtitle, body);
+}
+
+function clearFailMark() {
+  try { $persistentStore.write("0", FAIL_KEY); } catch (e) {}
+}
+
 // 读取当前 WiFi 名称（Loon 的 $config.getConfig() 返回含 ssid 的 JSON）
 function currentSSID() {
   try {
@@ -218,11 +237,12 @@ async function submitLogin(q) {
   }
 
   if (r.ok) {
+    clearFailMark();
     notify("校园网助手", "✅ 认证成功",
            CONFIG.user + "（服务: " + r.svc + "）\n已恢复上网");
   } else if (CONFIG.notifyFail) {
     console.log("认证失败: " + r.msg);
-    notify("校园网助手", "❌ 认证失败", r.msg);
+    notifyFailOnce("❌ 认证失败", r.msg);
   } else {
     console.log("认证失败: " + r.msg);
   }
