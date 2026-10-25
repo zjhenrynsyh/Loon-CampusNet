@@ -29,6 +29,9 @@ const CONFIG = {
   serviceOrder: String(arg.serviceOrder || "LT default YD DX").trim().split(/[\s,]+/).filter(Boolean),
   // captive 探测地址（微软连通性测试，被网关劫持即判定离线）
   probeURL: "http://www.msftconnecttest.com/connecttest.txt",
+  // 校园网 WiFi 名称（多个用逗号分隔；留空=不限制，任意网络都尝试）
+  // Loon 通过 $config.getConfig() 暴露当前 SSID，非校园网时直接退出，零流量
+  ssidList: String(arg.ssid || "iHBUT").split(/[,，\s]+/).filter(Boolean),
   // 失败是否弹通知（插件设置里的开关；$argument 布尔/字符串都兼容）
   notifyFail: String(arg.notifyFail === undefined ? true : arg.notifyFail) !== "false",
 };
@@ -85,6 +88,19 @@ function absPortal(loc) {
 
 function notify(title, subtitle, body) {
   $notification.post(title, subtitle || "", body || "");
+}
+
+// 读取当前 WiFi 名称（Loon 的 $config.getConfig() 返回含 ssid 的 JSON）
+function currentSSID() {
+  try {
+    if (typeof $config === "object" && $config !== null && typeof $config.getConfig === "function") {
+      const c = JSON.parse($config.getConfig() || "{}");
+      return String(c.ssid || "");
+    }
+  } catch (e) {
+    console.log("读取 SSID 失败: " + (e && e.message ? e.message : e));
+  }
+  return "";
 }
 
 /* ---------------- captive 探测 ----------------
@@ -159,6 +175,21 @@ async function submitLogin(q) {
     notify("校园网助手", "⚠️ 请先填写账号密码",
            "Loon → 配置 → 插件 → 校园网助手 → 「设置」里填写学号和密码");
     return $done();
+  }
+
+  // 先看当前 WiFi：不在校园网直接退出（零流量、零耗电）
+  if (CONFIG.ssidList.length) {
+    const ssid = currentSSID();
+    if (!ssid) {
+      console.log("当前非 WiFi（SSID 为空），跳过");
+      return $done();
+    }
+    const hit = CONFIG.ssidList.some((s) => ssid === s || ssid.toLowerCase().indexOf(s.toLowerCase()) >= 0);
+    if (!hit) {
+      console.log("当前 WiFi「" + ssid + "」不是校园网，跳过");
+      return $done();
+    }
+    console.log("WiFi: " + ssid);
   }
 
   const probe = await captiveProbe();
