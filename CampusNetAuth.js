@@ -46,7 +46,9 @@ const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15
 
 function httpGet(url) {
   return new Promise((resolve) => {
-    $httpClient.get({ url: url, headers: { "User-Agent": UA }, "auto-redirect": false },
+    // node: "DIRECT" 强制直连：避免用户把 Loon 切成全局代理时，
+    // 探测/登录请求被代理转发，导致误判「已在线」或认证失败
+    $httpClient.get({ url: url, headers: { "User-Agent": UA }, "auto-redirect": false, node: "DIRECT" },
       (err, resp, data) => {
         if (err) return resolve({ error: String(err) });
         resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
@@ -62,6 +64,7 @@ function httpPost(url, body) {
                  "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
       body: body,
       "auto-redirect": false,
+      node: "DIRECT",
     }, (err, resp, data) => {
       if (err) return resolve({ error: String(err) });
       resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
@@ -109,17 +112,32 @@ function clearFailMark() {
   try { $persistentStore.write("0", FAIL_KEY); } catch (e) {}
 }
 
-// 读取当前 WiFi 名称（Loon 的 $config.getConfig() 返回含 ssid 的 JSON）
+// 读取当前 WiFi 名称
+// 返回 null = 环境不支持/读取失败（不据此拦截，继续按网络探测判断）
+// 返回 "" = 确认没有 WiFi（蜂窝数据）
 function currentSSID() {
   try {
     if (typeof $config === "object" && $config !== null && typeof $config.getConfig === "function") {
       const c = JSON.parse($config.getConfig() || "{}");
+      if (!c || typeof c !== "object") return null;
       return String(c.ssid || "");
     }
+    return null;
   } catch (e) {
     console.log("读取 SSID 失败: " + (e && e.message ? e.message : e));
+    return null;
   }
-  return "";
+}
+
+// Loon 运行模式（0=全局直连 1=分流 2=全局代理），仅用于日志诊断
+function runningModel() {
+  try {
+    if (typeof $config === "object" && $config !== null && typeof $config.getConfig === "function") {
+      const c = JSON.parse($config.getConfig() || "{}");
+      return c && c.running_model !== undefined ? String(c.running_model) : "?";
+    }
+  } catch (e) {}
+  return "?";
 }
 
 /* ---------------- captive 探测 ----------------
@@ -129,7 +147,15 @@ function currentSSID() {
 
 async function captiveProbe() {
   const r = await httpGet(CONFIG.probeURL);
-  if (r.error) return { fail: true, reason: r.error };
+  if (r.error) {
+    // 探测请求本身失败（DNS 异常等）：仍在校园网离线态时，网关 302 兜底
+    const g = await httpGet("http://" + CONFIG.gateway + "/");
+    const gloc = header(g.headers, "Location");
+    if (g.status === 302 && gloc && /eportal|index\.jsp/i.test(gloc)) {
+      return { online: false, portal: absPortal(gloc) };
+    }
+    return { fail: true, reason: r.error };
+  }
   const loc = header(r.headers, "Location");
   const body = r.body || "";
   if (r.status === 200 && /Microsoft Connect Test/i.test(body)) return { online: true };
@@ -199,16 +225,20 @@ async function submitLogin(q) {
   // 先看当前 WiFi：不在校园网直接退出（零流量、零耗电）
   if (CONFIG.ssidList.length) {
     const ssid = currentSSID();
-    if (!ssid) {
+    if (ssid === null) {
+      // 读不到 SSID（环境不支持）：不拦截，继续按网络探测判断
+      console.log("无法读取 SSID，改为按网络探测判断");
+    } else if (!ssid) {
       console.log("当前非 WiFi（SSID 为空），跳过");
       return $done();
+    } else {
+      const hit = CONFIG.ssidList.some((s) => ssid === s || ssid.toLowerCase().indexOf(s.toLowerCase()) >= 0);
+      if (!hit) {
+        console.log("当前 WiFi「" + ssid + "」不是校园网，跳过");
+        return $done();
+      }
+      console.log("WiFi: " + ssid + "（Loon 运行模式 " + runningModel() + "）");
     }
-    const hit = CONFIG.ssidList.some((s) => ssid === s || ssid.toLowerCase().indexOf(s.toLowerCase()) >= 0);
-    if (!hit) {
-      console.log("当前 WiFi「" + ssid + "」不是校园网，跳过");
-      return $done();
-    }
-    console.log("WiFi: " + ssid);
   }
 
   const probe = await captiveProbe();
