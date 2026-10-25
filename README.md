@@ -24,6 +24,7 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 |---|---|
 | `CampusNetHelper.plugin` | 插件本体（`[Argument]` 设置项、`[Rule]` 直连规则、`[Script]` 触发） |
 | `CampusNetAuth.js` | 认证脚本（插件通过 `script-path` 引用，URL 带 `?v=N` 防缓存） |
+| `CHANGELOG.md` | 更新记录（也可以看仓库右侧的 Releases） |
 
 ## 认证方式
 
