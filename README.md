@@ -16,7 +16,7 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 
 装好后进插件「设置」填：学号、密码、校园网 WiFi 名称（默认 `iHBUT`）。
 
-要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=10`（loon v10，国内验收口径 + 诊断日志）。
+要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=11`（loon v11：国内验收口径 + 诊断日志 + 判定/稳定性增强）。
 
 ## 文件
 
@@ -39,7 +39,7 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 | `network-changed` | 切网瞬间 | 连上校园网 WiFi 立即认证 |
 | `cron` | 全天每 2 分钟 | 检测掉线并重连（不在校园网时零请求） |
 
-失败通知 10 分钟最多一条，避免刷屏。
+失败通知 10 分钟最多一条，避免刷屏。`cron` 与 `network-changed` 同时触发时有 90 秒租约锁互斥，不会重复登录。
 
 ## 日志在哪看
 

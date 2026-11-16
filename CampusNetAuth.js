@@ -14,6 +14,13 @@
  *   · console.log → Loon App 内置日志（仪表 → 脚本任务 / 工具 → 日志）
  *   · $persistentStore['campusnet_diag_log'] 留最近 100 行滚动副本（不含密码）
  *
+ * 2026-11-16 loon-v11：判定与稳定性增强
+ *   · 门户正文特征（wlanuserip/wlanacname/queryString/eportal 等）即使 200 也不误判在线
+ *   · 200 直出登录页时从正文 JS 跳转 / queryString= 提取参数，不再只靠 302
+ *   · 「网关未放行」重试前刷新认证页参数；「设备未注册」立即停并给指引（对齐 KSU v2.9）
+ *   · cron / network-changed 并发互斥（90s 租约锁）；runId + 耗时 + 结束行；响应脱敏；HTTP 12s 超时
+ *   · 网关配置归一化（填 https://.../ 也能工作）
+ *
  * 说明：本部署登录页的 RSA 公钥留空（由浏览器 JS 动态填充），
  *      因此直接使用门户原生支持的明文模式（页面 passwordEncrypt 默认 false），
  *      与浏览器未启用加密时的提交行为一致。2026-10-25 手机端实测可自动登录。
@@ -25,8 +32,9 @@
 // ======================= 配置区 =======================
 const arg = (typeof $argument === "object" && $argument) ? $argument : {};
 const CONFIG = {
-  // 认证网关（湖北工业大学默认 172.16.54.18）
-  gateway: String(arg.gateway || "172.16.54.18").trim(),
+  // 认证网关（湖北工业大学默认 172.16.54.18）；归一化掉协议头/尾斜杠
+  gateway: String(arg.gateway || "172.16.54.18").trim()
+            .replace(/^https?:\/\//i, "").replace(/\/+$/, ""),
   // 学号 / 密码（插件设置里填写，仅存于本机）
   user: String(arg.user || "").trim(),
   password: String(arg.password || ""),
@@ -48,6 +56,8 @@ const CONFIG = {
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+const STARTED_AT = Date.now();
+const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
 /* ---------------- 诊断日志 ----------------
  * Loon 没有 Mac 那种日志文件窗口：console.log 进 App 内置日志面板，
@@ -56,13 +66,23 @@ const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15
  */
 const DIAG_KEY = "campusnet_diag_log";
 const DIAG_MAX = 100;
+const LOCK_KEY = "campusnet_run_lock";
+const LOCK_LEASE_MS = 90 * 1000;
+let FINISHED = false;
+
 function shortURL(u) {
   const s = String(u || "");
   const m = s.match(/^https?:\/\/([^\/]+)(\/[^?#]*)?/);
   return m ? m[1] + (m[2] || "/") : s.slice(0, 60);
 }
+function safeBody(s) {
+  return String(s || "")
+    .replace(/userIndex["'\s:=]+[A-Za-z0-9%_-]+/gi, "userIndex=<...>")
+    .replace(/queryString["'\s:=]+[A-Za-z0-9%_=&.-]+/gi, "queryString=<...>")
+    .slice(0, 160);
+}
 function diag(msg) {
-  const line = "[诊断] " + msg;
+  const line = "[诊断][" + RUN_ID + "] " + msg;
   console.log(line);
   try {
     const raw = $persistentStore.read(DIAG_KEY) || "";
@@ -71,6 +91,27 @@ function diag(msg) {
     while (arr.length > DIAG_MAX) arr.shift();
     $persistentStore.write(arr.join("\n"), DIAG_KEY);
   } catch (e) { /* 存储不可用时不影响主流程 */ }
+}
+
+// 并发互斥：cron 与 network-changed 可能几乎同时触发，90s 租约避免双重登录
+function acquireLock() {
+  try {
+    const now = Date.now();
+    const last = +($persistentStore.read(LOCK_KEY) || 0);
+    if (last && now - last < LOCK_LEASE_MS) return false;
+    $persistentStore.write(String(now), LOCK_KEY);
+    return true;
+  } catch (e) { return true; }
+}
+function releaseLock() {
+  try { $persistentStore.write("0", LOCK_KEY); } catch (e) {}
+}
+function finish(outcome) {
+  if (FINISHED) return;
+  FINISHED = true;
+  diag("结束 outcome=" + outcome + " 耗时=" + ((Date.now() - STARTED_AT) / 1000).toFixed(1) + "s");
+  releaseLock();
+  $done();
 }
 
 /* ---------------- HTTP（$httpClient Promise 封装） ----------------
@@ -82,11 +123,16 @@ function httpGet(url) {
   return new Promise((resolve) => {
     // node: "DIRECT" 强制直连：避免用户把 Loon 切成全局代理时，
     // 探测/登录请求被代理转发，导致误判「已在线」或认证失败
-    $httpClient.get({ url: url, headers: { "User-Agent": UA }, "auto-redirect": false, node: "DIRECT" },
-      (err, resp, data) => {
-        if (err) return resolve({ error: String(err) });
-        resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
-      });
+    $httpClient.get({
+      url: url,
+      headers: { "User-Agent": UA },
+      "auto-redirect": false,
+      node: "DIRECT",
+      timeout: 12,
+    }, (err, resp, data) => {
+      if (err) return resolve({ error: String(err) });
+      resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
+    });
   });
 }
 
@@ -99,6 +145,7 @@ function httpPost(url, body) {
       body: body,
       "auto-redirect": false,
       node: "DIRECT",
+      timeout: 12,
     }, (err, resp, data) => {
       if (err) return resolve({ error: String(err) });
       resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
@@ -116,11 +163,19 @@ function header(headers, name) {
 // 等价 JS encodeURIComponent 的双重编码（门户表单字段全部要双重编码）
 function dEnc(s) { return encodeURIComponent(encodeURIComponent(s)); }
 
-// 302 Location → 完整认证页 URL
+// 302 Location → 完整认证页 URL（含协议相对 //host/path）
 function absPortal(loc) {
   if (/^https?:\/\//i.test(loc)) return loc;
+  if (/^\/\//.test(loc)) return "http:" + loc;
   if (loc.charAt(0) === "/") return "http://" + CONFIG.gateway + loc;
   return "http://" + CONFIG.gateway + "/" + loc;
+}
+
+// 从认证页 URL 取 queryString（去掉 #fragment，避免把锚点当参数）
+function queryOf(url) {
+  const s = String(url || "").split("#")[0];
+  const i = s.indexOf("?");
+  return i >= 0 ? s.slice(i + 1) : "";
 }
 
 // 认证页判定：index.jsp / eportal 接口；⚠️ 必须排除 success 系列
@@ -130,7 +185,18 @@ function isPortalTarget(u) {
   return /eportal|index\.jsp/i.test(u);
 }
 function looksPortalBody(body) {
-  return /InterFace\.do|eportal\/index\.jsp|passwordEncrypt|publicKeyExponent/i.test(body || "");
+  return /InterFace\.do|eportal|index\.jsp|passwordEncrypt|publicKeyExponent|wlanuserip|wlanacname|queryString/i.test(body || "");
+}
+
+// 200 直出登录页时，尝试从正文里捞出认证页 URL / queryString
+function extractPortalFromBody(body) {
+  const s = String(body || "");
+  let m = s.match(/(?:location(?:\.href)?\s*=|url\s*=)\s*['"]([^'"]*(?:eportal|index\.jsp)[^'"]*)['"]/i);
+  if (!m) m = s.match(/action\s*=\s*['"]([^'"]*(?:InterFace\.do|eportal)[^'"]*)['"]/i);
+  if (m) return m[1];
+  m = s.match(/queryString\s*=\s*['"]([^'"]+)['"]/i);
+  if (m) return "/eportal/index.jsp?queryString=" + m[1];
+  return "";
 }
 
 function notify(title, subtitle, body) {
@@ -199,11 +265,16 @@ async function probeOne(url, label) {
     return { line: line, r: r, portal: "", online: false, portalBody: false };
   }
   const loc = header(r.headers, "Location");
-  const portal = loc && isPortalTarget(loc) ? absPortal(loc) : "";
+  let portal = loc && isPortalTarget(loc) ? absPortal(loc) : "";
   const portalBody = looksPortalBody(r.body);
+  let fromBody = false;
+  if (!portal && portalBody) {
+    const found = extractPortalFromBody(r.body);
+    if (found) { portal = absPortal(found); fromBody = true; }
+  }
   let verdict;
-  if (portal) verdict = "劫持到认证页";
-  else if (portalBody) verdict = "HTTP200直出认证页";
+  if (portal) verdict = fromBody ? "正文给出认证页" : "劫持到认证页";
+  else if (portalBody) verdict = "HTTP200直出认证页(未取到参数)";
   else if (r.status === 204 || r.status === 200) verdict = "在线";
   else verdict = "HTTP" + r.status;
   const line = tag + "=" + r.status + (loc ? "→" + shortURL(portal || loc) : "") + " 判定=" + verdict;
@@ -274,7 +345,7 @@ async function submitLogin(q) {
 
     const r = await httpPost("http://" + CONFIG.gateway + "/eportal/InterFace.do?method=login", body);
     if (r.error) { diag("登录请求失败(" + svc + "): " + r.error); continue; }
-    diag("登录返回(" + svc + "): HTTP " + r.status + " " + (r.body || "").slice(0, 120));
+    diag("登录返回(" + svc + "): HTTP " + r.status + " " + safeBody(r.body));
     let j = null;
     try { j = JSON.parse(r.body); } catch (e) {}
 
@@ -283,9 +354,13 @@ async function submitLogin(q) {
       const v = await captiveProbe();
       if (v.online) return { ok: true, svc: svc };
       diag("验收失败: 门户 success 但网关未放行 | " + (v.detail || ""));
-      return { ok: false, msg: "门户返回成功但网关未放行（稍后自动重试）" };
+      return { ok: false, msg: "门户返回成功但网关未放行（将刷新认证页后重试）" };
     }
     const msg = (j && j.message) || "HTTP " + r.status;
+    // 设备未注册是配置/注册问题，换服务与重试都无意义，直接给指引（对齐 KSU v2.9）
+    if (/设备未注册|未注册/.test(msg)) {
+      return { ok: false, msg: "门户提示设备未注册：请先在校园网自助平台注册该设备/确认服务已开通", noRetry: true };
+    }
     if (!/服务|service|欠费|缴费|资费/i.test(msg)) {
       return { ok: false, msg: msg };
     }
@@ -297,6 +372,18 @@ async function submitLogin(q) {
 /* ---------------- 主流程 ---------------- */
 
 (async () => {
+  // 防止 cron 与 network-changed 并发执行两次登录
+  if (!acquireLock()) {
+    console.log("[诊断] 已有运行实例（" + (LOCK_LEASE_MS / 1000) + "s 租约），跳过本次触发");
+    return $done();
+  }
+
+  if (!CONFIG.user || !CONFIG.password) {
+    notify("校园网助手", "⚠️ 请先填写账号密码",
+           "Loon → 配置 → 插件 → 校园网助手 → 「设置」里填写学号和密码");
+    return finish("no_credentials");
+  }
+
   let ssid = null;
   if (CONFIG.ssidList.length) {
     ssid = currentSSID();
@@ -305,12 +392,12 @@ async function submitLogin(q) {
       console.log("无法读取 SSID，改为按网络探测判断");
     } else if (!ssid) {
       console.log("当前非 WiFi（SSID 为空），跳过");
-      return $done();
+      return finish("no_wifi");
     } else {
       const hit = CONFIG.ssidList.some((s) => ssid === s || ssid.toLowerCase().indexOf(s.toLowerCase()) >= 0);
       if (!hit) {
         console.log("当前 WiFi「" + ssid + "」不是校园网，跳过");
-        return $done();
+        return finish("not_campus_wifi");
       }
       console.log("WiFi: " + ssid + "（Loon 运行模式 " + runningModel() + "）");
     }
@@ -323,39 +410,46 @@ async function submitLogin(q) {
   if (probe.fail) {
     // 无响应：多半不在校园网 Wi-Fi（蜂窝/其他网络），静默退出
     console.log("探测无响应，跳过（" + probe.reason + "）");
-    return $done();
+    return finish("probe_fail");
   }
   if (probe.online) {
     console.log("已在线，无需认证");
-    return $done();
+    return finish("already_online");
   }
   if (!probe.portal) {
     console.log("未检测到认证页，跳过（" + (probe.reason || "") + "）");
-    return $done();
+    return finish("no_portal");
   }
 
-  const q = probe.portal.indexOf("?") >= 0 ? probe.portal.slice(probe.portal.indexOf("?") + 1) : "";
+  const q = queryOf(probe.portal);
   console.log("检测到离线，开始认证: " + shortURL(probe.portal));
   let r = await submitLogin(q);
-  // 「设备未注册 / 网关未放行」多为瞬时故障，等 3 秒重试一次
-  if (!r.ok && /未注册|未放行/.test(r.msg)) {
-    console.log("疑似瞬时故障，3 秒后重试一次");
-    await new Promise((res) => setTimeout(res, 3000));
-    r = await submitLogin(q);
+  // 「网关未放行」常是 queryString 过期/会话未同步：重新探测拿新参数再试一次
+  if (!r.ok && /未放行/.test(r.msg)) {
+    diag("网关未放行，刷新认证页参数后重试一次");
+    const p2 = await captiveProbe();
+    if (p2.online) {
+      diag("复核已放行，视为登录成功");
+      r = { ok: true, svc: "-" };
+    } else {
+      r = await submitLogin(p2.portal ? queryOf(p2.portal) : q);
+    }
   }
 
   if (r.ok) {
     clearFailMark();
     notify("校园网助手", "✅ 认证成功",
            CONFIG.user + "（服务: " + r.svc + "）\n已恢复上网");
-  } else if (CONFIG.notifyFail) {
+    return finish("login_success");
+  }
+  if (CONFIG.notifyFail) {
     console.log("认证失败: " + r.msg);
     notifyFailOnce("❌ 认证失败", r.msg);
   } else {
     console.log("认证失败: " + r.msg);
   }
-  $done();
+  return finish("login_fail");
 })().catch((e) => {
   console.log("脚本异常: " + (e && e.message ? e.message : e));
-  $done();
+  finish("script_error");
 });

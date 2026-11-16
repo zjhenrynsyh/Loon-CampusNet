@@ -1,10 +1,26 @@
 # 更新记录
 
+## loon-v11 · 2026-11-16 ★ 判定与稳定性增强
+
+- **判定更严**：门户正文特征（`wlanuserip` / `wlanacname` / `queryString` / `eportal` / `InterFace.do` 等）
+  即使返回 HTTP 200 也不再算「在线」，避免 200 直出登录页被误判放行。
+- **200 直出登录页也能救**：从页面正文的 JS 跳转（`location.href=...`）或 `queryString=` 提取认证页参数，
+  不再只依赖 302 Location；取不到参数时才回退网关 302。
+- **重试前刷新参数**：「网关未放行」不再拿旧 q 白试——重新探测拿新认证页 queryString 再登录；
+  若复核已放行则直接判成功。
+- **设备未注册立即停**：识别「设备未注册」直接给自助平台注册/服务开通指引，不再换服务或重试（对齐 KSU v2.9）。
+- **并发互斥**：cron 与 `network-changed` 可能同时触发，加 90 秒租约锁（`campusnet_run_lock`），避免双重登录互相打架。
+- **诊断增强**：每次运行带 runId + 结束 outcome + 耗时；登录响应里的 `userIndex` 脱敏；
+  所有 HTTP 请求加 12s 超时；网关配置归一化（填 `https://.../` 也能工作）。
+- **验证**：`node --check` 通过；10 场景 mock 全过（v10 的 6 个 + 正文提取/未注册/刷新 q/并发锁 4 个）；
+  请求均强制 `DIRECT` + `auto-redirect:false` + `timeout:12`，日志不出现 `userIndex` 原值。
+- 插件 raw 缓存破坏 `?v=10` → `?v=11`。
+
 ## loon-v10 · 2026-11-16 ★ 国内验收口径对齐 + 诊断日志
 
 - **协议级对齐**：验收口径从「只探国外 msftconnecttest」改为 **国内优先**
   （`connect.rom.miui.com/generate_204` 204 → `www.baidu.com` 200 → 国外兜底），
-  与 macOS / KSU / Windows 一致；国外被墙不再误报「门户成功但网关未放行」。
+  与 macOS 1.5 / KSU / Windows 一致；国外被墙不再误报「门户成功但网关未放行」。
 - **认证页识别收严**：`isPortalTarget()` 排除 `success` 系列（`redirectortosuccess.jsp` 谎报在线不再被当登录页）；
   200 直出门户正文单独识别，改从网关 302 取带 queryString 的认证页。
 - **诊断日志**：新增 `[诊断]` 逐探测点行（状态码 / 跳转目标 / 判定），query 与 userIndex 脱敏；
