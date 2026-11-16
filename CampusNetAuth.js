@@ -50,6 +50,11 @@
  *   · 新增开关「优先上次成功服务」(preferLastGood)，**默认关闭**：按用户配置的「服务尝试顺序」执行；
  *     只有手动打开时才记住并提前上次成功服务。
  *
+ * 2026-11-16 loon-v19：主动发现的新功能（不等用户提）
+ *   · 保活：登录后记下 userIndex，已在线时每 60s 发一次 keepalive（对齐 Mac/KSU/Win），降低会话过期概率；
+ *   · 新增三个手动入口：立即检测（绕过退避）、查看状态、复制诊断日志；
+ *   · 每次运行把结果摘要写入 persistentStore，供「查看状态」脚本读取。
+ *
  * 说明：本部署登录页的 RSA 公钥留空（由浏览器 JS 动态填充），
  *      因此直接使用门户原生支持的明文模式（页面 passwordEncrypt 默认 false），
  *      与浏览器未启用加密时的提交行为一致。2026-10-25 手机端实测可自动登录。
@@ -88,7 +93,7 @@ const CONFIG = {
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
-const SCRIPT_VERSION = "v18";
+const SCRIPT_VERSION = "v19";
 const STARTED_AT = Date.now();
 const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
@@ -105,6 +110,9 @@ const BACKOFF_KEY = "campusnet_backoff_until";
 const FAIL_STREAK_KEY = "campusnet_fail_streak";
 const VERSION_KEY = "campusnet_last_version";
 const GOOD_SVC_KEY = "campusnet_last_good_service";
+const USERINDEX_KEY = "campusnet_userindex";
+const KEEPALIVE_KEY = "campusnet_last_keepalive";
+const LAST_RESULT_KEY = "campusnet_last_result";
 const PROBE_TIMEOUT_MS = 8000;
 const LOGIN_TIMEOUT_MS = 12000;
 const LOG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -177,14 +185,19 @@ function markFailure() {
   } catch (e) {}
 }
 function isNetworkTrigger() {
-  try { return /切网|network/i.test(String((typeof $script !== "undefined" && $script && $script.name) || "")); }
+  try { return /切网|network|立即检测/i.test(String((typeof $script !== "undefined" && $script && $script.name) || "")); }
   catch (e) { return false; }
 }
 
 function finish(outcome) {
   if (FINISHED) return;
   FINISHED = true;
-  diag("结束 outcome=" + outcome + " 耗时=" + ((Date.now() - STARTED_AT) / 1000).toFixed(1) + "s");
+  const elapsed = ((Date.now() - STARTED_AT) / 1000).toFixed(1);
+  diag("结束 outcome=" + outcome + " 耗时=" + elapsed + "s");
+  try {
+    $persistentStore.write(JSON.stringify({ v: SCRIPT_VERSION, outcome: outcome,
+      at: new Date().toISOString(), elapsed: elapsed }), LAST_RESULT_KEY);
+  } catch (e) {}
   releaseLock();
   $done();
 }
@@ -440,6 +453,25 @@ async function verifyOnlineQuick() {
   return (await captiveProbe()).online;
 }
 
+// 已在线时按 60s 间隔保活（对齐 Mac/KSU/Win）；失败不影响本轮判定，
+// 会话真失效会在下一轮国内探测时暴露并触发登录。
+async function keepaliveIfNeeded() {
+  let ui = "";
+  try { ui = $persistentStore.read(USERINDEX_KEY) || ""; } catch (e) {}
+  if (!ui) return;
+  let last = 0;
+  try { last = +($persistentStore.read(KEEPALIVE_KEY) || 0); } catch (e) {}
+  if (Date.now() - last < 60 * 1000) return;
+  const r = await httpPost("http://" + CONFIG.gateway + "/eportal/InterFace.do?method=keepalive",
+                           "userIndex=" + ui);
+  if (!r.error) {
+    try { $persistentStore.write(String(Date.now()), KEEPALIVE_KEY); } catch (e) {}
+    diag("保活: 已续期（60s 间隔）");
+  } else {
+    diag("保活失败（不影响判定）: " + r.error);
+  }
+}
+
 /* ---------------- 登录（明文密码模式） ----------------
  * 依次尝试 serviceOrder，仅"服务/欠费/资费"类错误才换下一个服务
  */
@@ -482,6 +514,10 @@ async function submitLogin(q) {
     try { j = JSON.parse(r.body); } catch (e) {}
 
     if (j && j.result === "success") {
+      // 记下会话索引供保活使用（仅存本机，日志里已脱敏）
+      if (j.userIndex) {
+        try { $persistentStore.write(String(j.userIndex), USERINDEX_KEY); } catch (e) {}
+      }
       // 验收：门户说成功 ≠ 真认证，再探测一次（国内连通才算）
       if (await verifyOnlineQuick()) {
         if (CONFIG.preferLastGood) {
@@ -575,6 +611,7 @@ async function submitLogin(q) {
   if (probe.online) {
     console.log("已在线，无需认证");
     clearBackoff();
+    await keepaliveIfNeeded();
     return finish("already_online");
   }
   if (!probe.portal) {

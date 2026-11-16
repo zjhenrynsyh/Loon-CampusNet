@@ -16,7 +16,7 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 
 装好后进插件「设置」填：学号、密码、你的校园网 WiFi 名称（留空则不限制）。
 
-要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=18`（loon v18：服务优先策略可选 + 版本可见 + 效率/省电优化）。
+要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=19`（loon v19：保活 + 立即检测/查看状态/复制诊断日志）。
 
 ## 文件
 
@@ -29,6 +29,7 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 
 ## 主页与更新日志
 
+- 插件里还有三个手动入口：`立即检测`（绕过失败退避，马上检测）、`查看状态`（弹通知显示脚本版本/上次结果/耗时）、`复制诊断日志`（点通知复制最近 30 行）。
 - 插件详情页的「主页」来自插件头 `#!homepage`，指向本仓库 README（GitHub）。
 - Loon 插件头没有官方 changelog 字段，所以「查看更新日志」做成了插件里的 **Generic 手动脚本**：
   在插件详情/脚本里点「查看更新日志」→ 弹一条通知 → 点通知用 Safari 打开本仓库 `CHANGELOG.md`。
