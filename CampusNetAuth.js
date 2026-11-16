@@ -30,6 +30,11 @@
  *     导致每个请求 12ms 就超时（用户截图：0.3s 内全部请求 "Request timeout"）。
  *   · 改为 12000（12 秒），与 Mac 端 12s 超时一致；启动日志打印超时值便于确认。
  *
+ * 2026-11-16 loon-v15：提交前连通性复核（四端协议级对齐）
+ *   · 在 POST 登录前再用国内探测点快速确认一次；已放行则跳过登录（不 POST、不下线），
+ *     覆盖「定时探测与登录之间用户手动认证成功」的时间差。
+ *   · 仍未放行照常登录，不会一刀切跳过。
+ *
  * 说明：本部署登录页的 RSA 公钥留空（由浏览器 JS 动态填充），
  *      因此直接使用门户原生支持的明文模式（页面 passwordEncrypt 默认 false），
  *      与浏览器未启用加密时的提交行为一致。2026-10-25 手机端实测可自动登录。
@@ -65,7 +70,7 @@ const CONFIG = {
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
-const SCRIPT_VERSION = "v14";
+const SCRIPT_VERSION = "v15";
 const STARTED_AT = Date.now();
 const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
@@ -336,11 +341,28 @@ async function captiveProbe() {
   return { online: false, reason: reason, detail: lines.join(" | ") };
 }
 
+/* ---------------- 提交前连通性复核 ----------------
+ * 定时探测与真正 POST 之间可能有时间差（用户手动网页认证成功、网关会话刚同步）。
+ * 再快速探一次国内点；已放行就跳过登录，不 POST、不下线。未放行照常登录。
+ */
+async function quickOnline() {
+  for (const url of CONFIG.domesticProbes) {
+    const r = await httpGet(url);
+    if (!r.error && (r.status === 204 || r.status === 200) && !looksPortalBody(r.body)) return true;
+  }
+  return false;
+}
+
 /* ---------------- 登录（明文密码模式） ----------------
  * 依次尝试 serviceOrder，仅"服务/欠费/资费"类错误才换下一个服务
  */
 
 async function submitLogin(q) {
+  if (await quickOnline()) {
+    diag("提交前复核: 国内探测已放行，跳过登录（不 POST、不下线）");
+    return { ok: true, skipped: true, svc: "-" };
+  }
+  diag("提交前复核: 仍未放行，继续登录");
   for (const svc of CONFIG.serviceOrder) {
     const body = [
       ["userId", dEnc(CONFIG.user)],
@@ -447,6 +469,10 @@ async function submitLogin(q) {
     }
   }
 
+  if (r.ok && r.skipped) {
+    clearFailMark();
+    return finish("already_online_recheck");
+  }
   if (r.ok) {
     clearFailMark();
     notify("校园网助手", "✅ 认证成功",
