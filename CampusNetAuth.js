@@ -21,6 +21,10 @@
  *   · cron / network-changed 并发互斥（90s 租约锁）；runId + 耗时 + 结束行；响应脱敏；HTTP 12s 超时
  *   · 网关配置归一化（填 https://.../ 也能工作）
  *
+ * 2026-11-16 loon-v13：隐私与可诊断性
+ *   · 公开版本不再内置学校名 / SSID 默认值，改为留空由用户填写
+ *   · 启动日志打印脚本版本号与服务顺序，避免 raw 缓存导致「以为已更新其实跑旧脚本」
+ *
  * 说明：本部署登录页的 RSA 公钥留空（由浏览器 JS 动态填充），
  *      因此直接使用门户原生支持的明文模式（页面 passwordEncrypt 默认 false），
  *      与浏览器未启用加密时的提交行为一致。2026-10-25 手机端实测可自动登录。
@@ -32,7 +36,7 @@
 // ======================= 配置区 =======================
 const arg = (typeof $argument === "object" && $argument) ? $argument : {};
 const CONFIG = {
-  // 认证网关（湖北工业大学默认 172.16.54.18）；归一化掉协议头/尾斜杠
+  // 认证网关（本校默认 172.16.54.18）；归一化掉协议头/尾斜杠
   gateway: String(arg.gateway || "172.16.54.18").trim()
             .replace(/^https?:\/\//i, "").replace(/\/+$/, ""),
   // 学号 / 密码（插件设置里填写，仅存于本机）
@@ -49,13 +53,14 @@ const CONFIG = {
   ],
   // 校园网 WiFi 名称（多个用逗号分隔；留空=不限制，任意网络都尝试）
   // Loon 通过 $config.getConfig() 暴露当前 SSID，非校园网时直接退出，零流量
-  ssidList: String(arg.ssid || "iHBUT").split(/[,，\s]+/).filter(Boolean),
+  ssidList: String(arg.ssid || "").split(/[,，\s]+/).filter(Boolean),
   // 失败是否弹通知（插件设置里的开关；$argument 布尔/字符串都兼容）
   notifyFail: String(arg.notifyFail === undefined ? true : arg.notifyFail) !== "false",
 };
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+const SCRIPT_VERSION = "v13";
 const STARTED_AT = Date.now();
 const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
@@ -402,8 +407,9 @@ async function submitLogin(q) {
       console.log("WiFi: " + ssid + "（Loon 运行模式 " + runningModel() + "）");
     }
   }
-  diag("启动: 网关=" + CONFIG.gateway + " 模式=" + runningModel() +
+  diag("启动: 脚本=" + SCRIPT_VERSION + " 网关=" + CONFIG.gateway + " 模式=" + runningModel() +
        " SSID=" + (ssid === null ? "未知" : (ssid || "无")) +
+       " 服务顺序=" + CONFIG.serviceOrder.join("→") +
        " 国内点=" + CONFIG.domesticProbes.map(shortURL).join(","));
 
   const probe = await captiveProbe();

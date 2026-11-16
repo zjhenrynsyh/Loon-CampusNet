@@ -14,9 +14,9 @@ Loon → 配置 → 插件 → 右上角 `+` → 从 URL 安装：
 https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelper.plugin
 ```
 
-装好后进插件「设置」填：学号、密码、校园网 WiFi 名称（默认 `iHBUT`）。
+装好后进插件「设置」填：学号、密码、你的校园网 WiFi 名称（留空则不限制）。
 
-要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=12`（loon v12：国内验收口径 + 诊断日志 + 判定/稳定性增强 + 主页/更新日志入口）。
+要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=13`（loon v13：隐私清理 + 运行版本可见；功能同 v12 加主页/更新日志）。
 
 ## 文件
 
@@ -60,3 +60,5 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 ## 说明
 
 macOS 版与 Android 版为本项目同源实现，但都是本地安装（不需远程 URL），不在此仓库公开。
+
+隐私：本公开仓库（含提交历史）不含真实姓名、学校名称、校园网 SSID、账号或密码；提交身份统一使用 GitHub 账号 `zjhenrynsyh`。
