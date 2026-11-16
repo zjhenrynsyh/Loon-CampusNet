@@ -25,6 +25,11 @@
  *   · 公开版本不再内置学校名 / SSID 默认值，改为留空由用户填写
  *   · 启动日志打印脚本版本号与服务顺序，避免 raw 缓存导致「以为已更新其实跑旧脚本」
  *
+ * 2026-11-16 loon-v14 ★ 修 HTTP 超时单位（关键）
+ *   · v11 把 $httpClient 的 timeout 写成 12，误以为是秒；Loon 实际单位是**毫秒**，
+ *     导致每个请求 12ms 就超时（用户截图：0.3s 内全部请求 "Request timeout"）。
+ *   · 改为 12000（12 秒），与 Mac 端 12s 超时一致；启动日志打印超时值便于确认。
+ *
  * 说明：本部署登录页的 RSA 公钥留空（由浏览器 JS 动态填充），
  *      因此直接使用门户原生支持的明文模式（页面 passwordEncrypt 默认 false），
  *      与浏览器未启用加密时的提交行为一致。2026-10-25 手机端实测可自动登录。
@@ -60,7 +65,7 @@ const CONFIG = {
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
-const SCRIPT_VERSION = "v13";
+const SCRIPT_VERSION = "v14";
 const STARTED_AT = Date.now();
 const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
@@ -133,7 +138,7 @@ function httpGet(url) {
       headers: { "User-Agent": UA },
       "auto-redirect": false,
       node: "DIRECT",
-      timeout: 12,
+      timeout: 12000,
     }, (err, resp, data) => {
       if (err) return resolve({ error: String(err) });
       resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
@@ -150,7 +155,7 @@ function httpPost(url, body) {
       body: body,
       "auto-redirect": false,
       node: "DIRECT",
-      timeout: 12,
+      timeout: 12000,
     }, (err, resp, data) => {
       if (err) return resolve({ error: String(err) });
       resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
@@ -409,7 +414,7 @@ async function submitLogin(q) {
   }
   diag("启动: 脚本=" + SCRIPT_VERSION + " 网关=" + CONFIG.gateway + " 模式=" + runningModel() +
        " SSID=" + (ssid === null ? "未知" : (ssid || "无")) +
-       " 服务顺序=" + CONFIG.serviceOrder.join("→") +
+       " 服务顺序=" + CONFIG.serviceOrder.join("→") + " 超时=12000ms" +
        " 国内点=" + CONFIG.domesticProbes.map(shortURL).join(","));
 
   const probe = await captiveProbe();
