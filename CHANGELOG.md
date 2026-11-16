@@ -1,5 +1,16 @@
 # 更新记录
 
+## loon-v12 · 2026-11-16 ★ 插件详情页主页 + 查看更新日志
+
+- **主页功能**：插件头新增 `#!homepage`，指向 GitHub 仓库 README
+  （`https://github.com/zjhenrynsyh/Loon-CampusNet/blob/main/README.md`），Loon 插件详情页可直接点开。
+- **查看更新日志**：新增 Generic 手动脚本「查看更新日志」
+  （`CampusNetChangelog.js?v=12`），在插件里手动触发后弹通知，点通知用 Safari 打开 GitHub `CHANGELOG.md`。
+  两项都通过 GitHub 仓库实现，不写本地文件、不上传数据。
+- **插件信息补齐**：`#!system = iOS,iPadOS,macOS`、`#!system_version = 14.0`，详情页显示支持平台。
+- 认证脚本无逻辑改动，但 raw 缓存破坏统一 `?v=11` → `?v=12`，保证用户拉到新插件/新脚本。
+- 验证：`node --check` + 通知 attach.openUrl 断言通过。
+
 ## loon-v11 · 2026-11-16 ★ 判定与稳定性增强
 
 - **判定更严**：门户正文特征（`wlanuserip` / `wlanacname` / `queryString` / `eportal` / `InterFace.do` 等）

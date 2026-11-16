@@ -16,15 +16,23 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 
 装好后进插件「设置」填：学号、密码、校园网 WiFi 名称（默认 `iHBUT`）。
 
-要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=11`（loon v11：国内验收口径 + 诊断日志 + 判定/稳定性增强）。
+要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=12`（loon v12：国内验收口径 + 诊断日志 + 判定/稳定性增强 + 主页/更新日志入口）。
 
 ## 文件
 
 | 文件 | 说明 |
 |---|---|
-| `CampusNetHelper.plugin` | 插件本体（`[Argument]` 设置项、`[Rule]` 直连规则、`[Script]` 触发） |
+| `CampusNetHelper.plugin` | 插件本体（`[Argument]` 设置项、`[Rule]` 直连规则、`[Script]` 触发，`#!homepage` 指向本 README） |
 | `CampusNetAuth.js` | 认证脚本（插件通过 `script-path` 引用，URL 带 `?v=N` 防缓存） |
+| `CampusNetChangelog.js` | Generic 手动脚本「查看更新日志」，点通知打开 GitHub `CHANGELOG.md` |
 | `CHANGELOG.md` | 更新记录（也可以看仓库右侧的 Releases） |
+
+## 主页与更新日志
+
+- 插件详情页的「主页」来自插件头 `#!homepage`，指向本仓库 README（GitHub）。
+- Loon 插件头没有官方 changelog 字段，所以「查看更新日志」做成了插件里的 **Generic 手动脚本**：
+  在插件详情/脚本里点「查看更新日志」→ 弹一条通知 → 点通知用 Safari 打开本仓库 `CHANGELOG.md`。
+- 两条路径都在 GitHub 仓库，不写本地文件、不上传任何数据。
 
 ## 认证方式
 
