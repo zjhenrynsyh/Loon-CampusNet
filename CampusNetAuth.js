@@ -42,11 +42,13 @@
  *   · 每个探测点日志带耗时，便于定位慢链路；一次性版本更新通知。
  *
  * 2026-11-16 loon-v17：再深挖一轮——更快 / 更省 / 更稳
- *   · 上次成功服务优先（persistentStore 记住，命中则提到队首），减少换服务空试；
- *   · 探测超时 8s / 登录 12s 分开：探测失败更早暴露，都为国内点留足余量（默认 5s）；
- *   · SSID 读到空值时 0.8s 后重读一次，避免重连瞬间误判「不在校园网」；
- *   · 诊断日志加 7 天时间上限（与 100 行双阈值，谁先到先删），控制长期内存/存储占用；
- *   · 显式开启 auto-cookie，确保探测与登录 POST 之间会话 Cookie 不断。
+ *   · 探测超时 8s / 登录 12s 分开；SSID 空值重读一次；诊断日志 7 天双阈值；
+ *   · 显式开启 auto-cookie；全局代理日志提示。
+ *
+ * 2026-11-16 loon-v18：服务优先策略改成用户可选（撤销 v17 的默认行为）
+ *   · 用户反馈：教学楼想优先校园网(default)、寝室想优先联通(LT)，不能强制「上次成功优先」。
+ *   · 新增开关「优先上次成功服务」(preferLastGood)，**默认关闭**：按用户配置的「服务尝试顺序」执行；
+ *     只有手动打开时才记住并提前上次成功服务。
  *
  * 说明：本部署登录页的 RSA 公钥留空（由浏览器 JS 动态填充），
  *      因此直接使用门户原生支持的明文模式（页面 passwordEncrypt 默认 false），
@@ -79,11 +81,14 @@ const CONFIG = {
   ssidList: String(arg.ssid || "").split(/[,，\s]+/).filter(Boolean),
   // 失败是否弹通知（插件设置里的开关；$argument 布尔/字符串都兼容）
   notifyFail: String(arg.notifyFail === undefined ? true : arg.notifyFail) !== "false",
+  // v18：是否「优先上次成功服务」。默认关闭——按用户配置的服务顺序走，
+  // 满足教学楼优先校园网(default)、寝室优先联通(LT)这类按地点切换的需求。
+  preferLastGood: arg.preferLastGood === true || String(arg.preferLastGood) === "true",
 };
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
-const SCRIPT_VERSION = "v17";
+const SCRIPT_VERSION = "v18";
 const STARTED_AT = Date.now();
 const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
@@ -445,17 +450,19 @@ async function submitLogin(q) {
     return { ok: true, skipped: true, svc: "-" };
   }
   diag("提交前复核: 仍未放行，继续登录");
-  // 上次成功的服务优先：减少「先试不通的服务」带来的多轮 POST 与等待
+  // 默认严格按用户配置的服务顺序；只有显式打开「优先上次成功服务」开关才提前
   const services = CONFIG.serviceOrder.slice();
-  try {
-    const good = $persistentStore.read(GOOD_SVC_KEY) || "";
-    const idx = services.indexOf(good);
-    if (idx > 0) {
-      services.splice(idx, 1);
-      services.unshift(good);
-      diag("上次成功服务优先: " + good);
-    }
-  } catch (e) {}
+  if (CONFIG.preferLastGood) {
+    try {
+      const good = $persistentStore.read(GOOD_SVC_KEY) || "";
+      const idx = services.indexOf(good);
+      if (idx > 0) {
+        services.splice(idx, 1);
+        services.unshift(good);
+        diag("已开启「优先上次成功服务」: " + good);
+      }
+    } catch (e) {}
+  }
   for (const svc of services) {
     const body = [
       ["userId", dEnc(CONFIG.user)],
@@ -477,7 +484,9 @@ async function submitLogin(q) {
     if (j && j.result === "success") {
       // 验收：门户说成功 ≠ 真认证，再探测一次（国内连通才算）
       if (await verifyOnlineQuick()) {
-        try { $persistentStore.write(svc, GOOD_SVC_KEY); } catch (e) {}
+        if (CONFIG.preferLastGood) {
+          try { $persistentStore.write(svc, GOOD_SVC_KEY); } catch (e) {}
+        }
         return { ok: true, svc: svc };
       }
       diag("验收失败: 门户 success 但网关未放行");

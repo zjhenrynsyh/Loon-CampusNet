@@ -16,7 +16,7 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 
 装好后进插件「设置」填：学号、密码、你的校园网 WiFi 名称（留空则不限制）。
 
-要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=17`（loon v17：版本可见 + 效率/省电 + 更深一层优化）。
+要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=18`（loon v18：服务优先策略可选 + 版本可见 + 效率/省电优化）。
 
 ## 文件
 

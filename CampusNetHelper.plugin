@@ -4,7 +4,7 @@
 #!homepage = https://github.com/zjhenrynsyh/Loon-CampusNet/blob/main/README.md
 #!system = iOS,iPadOS,macOS
 #!system_version = 14.0
-#!date = 2026-11-16 (v17)
+#!date = 2026-11-16 (v18)
 #!loon_version = 3.5.1(983)
 #!openUrl = http://172.16.54.18
 #!tag = 校园网
@@ -32,6 +32,7 @@ ssid = input,"",type=string,tag=校园网 WiFi 名称,desc=请填写你的校园
 serviceOrder = select,"LT default YD DX","default LT YD DX","YD LT default DX","DX LT default YD",type=string,tag=服务尝试顺序,desc=LT=联通 default=校园网 YD=移动 DX=电信，不通自动换下一个
 cronExpression = input,"*/2 * * * *",type=string,tag=定时检测频率,desc=Cron 表达式，默认全天每 2 分钟检查一次是否断网（非校园网 WiFi 直接跳过）
 notifyFail = switch,true,tag=失败也弹通知,desc=关闭后仅认证成功时弹通知
+preferLastGood = switch,false,tag=优先上次成功服务,desc=默认关闭：严格按「服务尝试顺序」执行（教学楼可填 default 优先、寝室可填 LT 优先）。打开后才记住上次成功服务并下次优先
 
 [Rule]
 # 认证网关与探测域名强制直连，防止 Loon 代理干扰 captive 探测
@@ -44,12 +45,12 @@ DOMAIN,captive.apple.com,DIRECT
 
 [Script]
 # 定时检测：检测频率可在上方「定时检测频率」里改（已在线时静默退出，零流量）
-cron ${cronExpression} then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=17", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(定时)", timeout=300
+cron ${cronExpression} then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=18", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}, ${preferLastGood}}) with enable=true, tag="校园网自动认证(定时)", timeout=300
 # 切网触发：连上校园网 WiFi 的瞬间立即认证（不用等定时器）
-network-changed then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=17", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}}) with enable=true, tag="校园网自动认证(切网触发)", timeout=300
+network-changed then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=18", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}, ${preferLastGood}}) with enable=true, tag="校园网自动认证(切网触发)", timeout=300
 # 手动触发：查看更新日志（在插件里点一下，弹通知 → 点通知打开 GitHub CHANGELOG.md）
-generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetChangelog.js?v=17") with tag="查看更新日志", img_url="doc.text.system", timeout=30
+generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetChangelog.js?v=18") with tag="查看更新日志", img_url="doc.text.system", timeout=30
 
 # —— 旧版 Loon（3.2.1~3.5.0，Build 733+）兼容写法，二选一 ——
-# cron ${cronExpression} script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=17, tag=校园网自动认证(定时), enable=true, argument=[{gateway},{user},{password},{ssid},{serviceOrder},{notifyFail}]
-# network-changed script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=17, tag=校园网自动认证(切网触发), enable=true, argument=[{gateway},{user},{password},{ssid},{serviceOrder},{notifyFail}]
+# cron ${cronExpression} script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=18, tag=校园网自动认证(定时), enable=true, argument=[{gateway},{user},{password},{ssid},{serviceOrder},{notifyFail},{preferLastGood}]
+# network-changed script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=18, tag=校园网自动认证(切网触发), enable=true, argument=[{gateway},{user},{password},{ssid},{serviceOrder},{notifyFail},{preferLastGood}]
