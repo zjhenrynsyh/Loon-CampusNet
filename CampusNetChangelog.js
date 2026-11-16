@@ -9,7 +9,7 @@ const URL_CHANGELOG = "https://github.com/zjhenrynsyh/Loon-CampusNet/blob/main/C
 const URL_HOMEPAGE = "https://github.com/zjhenrynsyh/Loon-CampusNet/blob/main/README.md";
 
 $notification.post(
-  "校园网助手 · 更新日志",
+  "校园网助手 v17 · 更新日志",
   "点此打开 GitHub CHANGELOG",
   "主页：" + URL_HOMEPAGE,
   { openUrl: URL_CHANGELOG }

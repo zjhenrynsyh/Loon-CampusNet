@@ -35,6 +35,19 @@
  *     覆盖「定时探测与登录之间用户手动认证成功」的时间差。
  *   · 仍未放行照常登录，不会一刀切跳过。
  *
+ * 2026-11-16 loon-v16：版本可见 + 效率/省电优化
+ *   · 版本号直接显示在插件详情页（#!date）、通知标题与更新提示中；
+ *   · 连续失败指数退避（2min→5→10→20min 封顶），避免门户故障时每轮空跑；切网触发立即绕过退避；
+ *   · 登录后验收先用 MIUI 短重试（1s）再回退完整链，成功判定更快；
+ *   · 每个探测点日志带耗时，便于定位慢链路；一次性版本更新通知。
+ *
+ * 2026-11-16 loon-v17：再深挖一轮——更快 / 更省 / 更稳
+ *   · 上次成功服务优先（persistentStore 记住，命中则提到队首），减少换服务空试；
+ *   · 探测超时 8s / 登录 12s 分开：探测失败更早暴露，都为国内点留足余量（默认 5s）；
+ *   · SSID 读到空值时 0.8s 后重读一次，避免重连瞬间误判「不在校园网」；
+ *   · 诊断日志加 7 天时间上限（与 100 行双阈值，谁先到先删），控制长期内存/存储占用；
+ *   · 显式开启 auto-cookie，确保探测与登录 POST 之间会话 Cookie 不断。
+ *
  * 说明：本部署登录页的 RSA 公钥留空（由浏览器 JS 动态填充），
  *      因此直接使用门户原生支持的明文模式（页面 passwordEncrypt 默认 false），
  *      与浏览器未启用加密时的提交行为一致。2026-10-25 手机端实测可自动登录。
@@ -70,7 +83,7 @@ const CONFIG = {
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
-const SCRIPT_VERSION = "v15";
+const SCRIPT_VERSION = "v17";
 const STARTED_AT = Date.now();
 const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
@@ -83,6 +96,13 @@ const DIAG_KEY = "campusnet_diag_log";
 const DIAG_MAX = 100;
 const LOCK_KEY = "campusnet_run_lock";
 const LOCK_LEASE_MS = 90 * 1000;
+const BACKOFF_KEY = "campusnet_backoff_until";
+const FAIL_STREAK_KEY = "campusnet_fail_streak";
+const VERSION_KEY = "campusnet_last_version";
+const GOOD_SVC_KEY = "campusnet_last_good_service";
+const PROBE_TIMEOUT_MS = 8000;
+const LOGIN_TIMEOUT_MS = 12000;
+const LOG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 let FINISHED = false;
 
 function shortURL(u) {
@@ -101,7 +121,9 @@ function diag(msg) {
   console.log(line);
   try {
     const raw = $persistentStore.read(DIAG_KEY) || "";
-    const arr = raw ? String(raw).split("\n").filter(Boolean) : [];
+    const cutoff = new Date(Date.now() - LOG_MAX_AGE_MS).toISOString();
+    // 行首是 ISO 时间戳，字典序比较即可按时间过滤；与 100 行上限双阈值，谁先到先删
+    const arr = raw ? String(raw).split("\n").filter(Boolean).filter((l) => l >= cutoff) : [];
     arr.push(new Date().toISOString() + " " + line);
     while (arr.length > DIAG_MAX) arr.shift();
     $persistentStore.write(arr.join("\n"), DIAG_KEY);
@@ -121,6 +143,39 @@ function acquireLock() {
 function releaseLock() {
   try { $persistentStore.write("0", LOCK_KEY); } catch (e) {}
 }
+
+/* 连续失败退避：避免门户/账号故障期间每 2 分钟空跑整套探测+4 次 POST。
+ * 1 次失败不退避；之后 5 → 10 → 20 分钟封顶；成功/已在线/切网触发立即清零。
+ * 绝不永久停摆（对齐 Mac 1.6 底线）。
+ */
+function backoffRemaining() {
+  try {
+    const until = +($persistentStore.read(BACKOFF_KEY) || 0);
+    return until > Date.now() ? until - Date.now() : 0;
+  } catch (e) { return 0; }
+}
+function clearBackoff() {
+  try {
+    $persistentStore.write("0", BACKOFF_KEY);
+    $persistentStore.write("0", FAIL_STREAK_KEY);
+  } catch (e) {}
+}
+function markFailure() {
+  try {
+    const n = Math.min(+($persistentStore.read(FAIL_STREAK_KEY) || 0) + 1, 99);
+    $persistentStore.write(String(n), FAIL_STREAK_KEY);
+    const minutes = n <= 1 ? 0 : (n === 2 ? 5 : (n === 3 ? 10 : 20));
+    if (minutes > 0) {
+      $persistentStore.write(String(Date.now() + minutes * 60 * 1000), BACKOFF_KEY);
+      diag("连续失败 " + n + " 次，退避 " + minutes + " 分钟（切网触发可立即绕过）");
+    }
+  } catch (e) {}
+}
+function isNetworkTrigger() {
+  try { return /切网|network/i.test(String((typeof $script !== "undefined" && $script && $script.name) || "")); }
+  catch (e) { return false; }
+}
+
 function finish(outcome) {
   if (FINISHED) return;
   FINISHED = true;
@@ -142,8 +197,9 @@ function httpGet(url) {
       url: url,
       headers: { "User-Agent": UA },
       "auto-redirect": false,
+      "auto-cookie": true,
       node: "DIRECT",
-      timeout: 12000,
+      timeout: PROBE_TIMEOUT_MS,
     }, (err, resp, data) => {
       if (err) return resolve({ error: String(err) });
       resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
@@ -159,8 +215,9 @@ function httpPost(url, body) {
                  "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
       body: body,
       "auto-redirect": false,
+      "auto-cookie": true,
       node: "DIRECT",
-      timeout: 12000,
+      timeout: LOGIN_TIMEOUT_MS,
     }, (err, resp, data) => {
       if (err) return resolve({ error: String(err) });
       resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
@@ -245,7 +302,13 @@ function currentSSID() {
     if (typeof $config === "object" && $config !== null && typeof $config.getConfig === "function") {
       const c = JSON.parse($config.getConfig() || "{}");
       if (!c || typeof c !== "object") return null;
-      return String(c.ssid || "");
+      let s = String(c.ssid || "");
+      // 重连瞬间 SSID 可能短暂为空：0.8s 后重读一次，避免误判「不在校园网」而白跳过一轮
+      if (!s) {
+        const cfg2 = JSON.parse($config.getConfig() || "{}");
+        if (cfg2 && typeof cfg2 === "object") s = String(cfg2.ssid || "");
+      }
+      return s;
     }
     return null;
   } catch (e) {
@@ -273,9 +336,11 @@ function runningModel() {
 
 async function probeOne(url, label) {
   const tag = label + "[" + shortURL(url) + "]";
+  const t0 = Date.now();
   const r = await httpGet(url);
+  const cost = (Date.now() - t0) + "ms";
   if (r.error) {
-    const line = tag + "=ERR " + r.error + " 判定=不可达";
+    const line = tag + "=ERR " + r.error + " (" + cost + ") 判定=不可达";
     diag(line);
     return { line: line, r: r, portal: "", online: false, portalBody: false };
   }
@@ -292,7 +357,8 @@ async function probeOne(url, label) {
   else if (portalBody) verdict = "HTTP200直出认证页(未取到参数)";
   else if (r.status === 204 || r.status === 200) verdict = "在线";
   else verdict = "HTTP" + r.status;
-  const line = tag + "=" + r.status + (loc ? "→" + shortURL(portal || loc) : "") + " 判定=" + verdict;
+  const line = tag + "=" + r.status + (loc ? "→" + shortURL(portal || loc) : "") +
+               " (" + cost + ") 判定=" + verdict;
   diag(line);
   return { line: line, r: r, portal: portal, online: verdict === "在线", portalBody: portalBody };
 }
@@ -353,6 +419,22 @@ async function quickOnline() {
   return false;
 }
 
+// 登录后的快速验收：网关放行常有 1~2 秒传播延迟，先短重试 MIUI，
+// 仍不通再回退完整探测链，避免每次都把 4~5 个探测点跑满。
+async function verifyOnlineQuick() {
+  const u = CONFIG.domesticProbes[0];
+  for (let i = 0; i < 2; i++) {
+    if (i > 0) await new Promise((res) => setTimeout(res, 1000));
+    const r = await httpGet(u);
+    if (!r.error && (r.status === 204 || r.status === 200) && !looksPortalBody(r.body)) {
+      diag("验收: MIUI " + (i + 1) + " 次即放行");
+      return true;
+    }
+  }
+  diag("验收: MIUI 短重试未通，回退完整探测链");
+  return (await captiveProbe()).online;
+}
+
 /* ---------------- 登录（明文密码模式） ----------------
  * 依次尝试 serviceOrder，仅"服务/欠费/资费"类错误才换下一个服务
  */
@@ -363,7 +445,18 @@ async function submitLogin(q) {
     return { ok: true, skipped: true, svc: "-" };
   }
   diag("提交前复核: 仍未放行，继续登录");
-  for (const svc of CONFIG.serviceOrder) {
+  // 上次成功的服务优先：减少「先试不通的服务」带来的多轮 POST 与等待
+  const services = CONFIG.serviceOrder.slice();
+  try {
+    const good = $persistentStore.read(GOOD_SVC_KEY) || "";
+    const idx = services.indexOf(good);
+    if (idx > 0) {
+      services.splice(idx, 1);
+      services.unshift(good);
+      diag("上次成功服务优先: " + good);
+    }
+  } catch (e) {}
+  for (const svc of services) {
     const body = [
       ["userId", dEnc(CONFIG.user)],
       ["password", dEnc(CONFIG.password)],
@@ -383,9 +476,11 @@ async function submitLogin(q) {
 
     if (j && j.result === "success") {
       // 验收：门户说成功 ≠ 真认证，再探测一次（国内连通才算）
-      const v = await captiveProbe();
-      if (v.online) return { ok: true, svc: svc };
-      diag("验收失败: 门户 success 但网关未放行 | " + (v.detail || ""));
+      if (await verifyOnlineQuick()) {
+        try { $persistentStore.write(svc, GOOD_SVC_KEY); } catch (e) {}
+        return { ok: true, svc: svc };
+      }
+      diag("验收失败: 门户 success 但网关未放行");
       return { ok: false, msg: "门户返回成功但网关未放行（将刷新认证页后重试）" };
     }
     const msg = (j && j.message) || "HTTP " + r.status;
@@ -408,6 +503,17 @@ async function submitLogin(q) {
   if (!acquireLock()) {
     console.log("[诊断] 已有运行实例（" + (LOCK_LEASE_MS / 1000) + "s 租约），跳过本次触发");
     return $done();
+  }
+
+  // 连续失败退避：切网触发立即绕过；cron 在退避窗口内静默跳过，绝不永久停摆
+  if (isNetworkTrigger()) {
+    clearBackoff();
+  } else {
+    const rem = backoffRemaining();
+    if (rem > 0) {
+      console.log("[诊断] 连续失败退避中，剩余 " + Math.ceil(rem / 1000) + "s，跳过本轮 cron");
+      return finish("backoff_skip");
+    }
   }
 
   if (!CONFIG.user || !CONFIG.password) {
@@ -434,10 +540,22 @@ async function submitLogin(q) {
       console.log("WiFi: " + ssid + "（Loon 运行模式 " + runningModel() + "）");
     }
   }
-  diag("启动: 脚本=" + SCRIPT_VERSION + " 网关=" + CONFIG.gateway + " 模式=" + runningModel() +
+  const mode = runningModel();
+  diag("启动: 脚本=" + SCRIPT_VERSION + " 网关=" + CONFIG.gateway + " 模式=" + mode +
        " SSID=" + (ssid === null ? "未知" : (ssid || "无")) +
-       " 服务顺序=" + CONFIG.serviceOrder.join("→") + " 超时=12000ms" +
+       " 服务顺序=" + CONFIG.serviceOrder.join("→") +
+       " 超时=探测" + PROBE_TIMEOUT_MS + "ms/登录" + LOGIN_TIMEOUT_MS + "ms" +
        " 国内点=" + CONFIG.domesticProbes.map(shortURL).join(","));
+  if (mode === "2") diag("提示: Loon 处于全局代理模式；所有内网请求已强制 DIRECT，不受影响");
+  // 版本可见：跨版本升级后弹一次通知；详情页 #!date 也带版本号
+  try {
+    const last = $persistentStore.read(VERSION_KEY) || "";
+    $persistentStore.write(SCRIPT_VERSION, VERSION_KEY);
+    if (last && last !== SCRIPT_VERSION) {
+      notify("校园网助手 v" + SCRIPT_VERSION.slice(1), "脚本已更新",
+             last + " → " + SCRIPT_VERSION + "，本次配置保持不变");
+    }
+  } catch (e) {}
 
   const probe = await captiveProbe();
   if (probe.fail) {
@@ -447,6 +565,7 @@ async function submitLogin(q) {
   }
   if (probe.online) {
     console.log("已在线，无需认证");
+    clearBackoff();
     return finish("already_online");
   }
   if (!probe.portal) {
@@ -471,14 +590,17 @@ async function submitLogin(q) {
 
   if (r.ok && r.skipped) {
     clearFailMark();
+    clearBackoff();
     return finish("already_online_recheck");
   }
   if (r.ok) {
     clearFailMark();
-    notify("校园网助手", "✅ 认证成功",
+    clearBackoff();
+    notify("校园网助手 v" + SCRIPT_VERSION.slice(1), "✅ 认证成功",
            CONFIG.user + "（服务: " + r.svc + "）\n已恢复上网");
     return finish("login_success");
   }
+  markFailure();
   if (CONFIG.notifyFail) {
     console.log("认证失败: " + r.msg);
     notifyFailOnce("❌ 认证失败", r.msg);
