@@ -1,5 +1,20 @@
 # 更新记录
 
+## loon-v10 · 2026-11-16 ★ 国内验收口径对齐 + 诊断日志
+
+- **协议级对齐**：验收口径从「只探国外 msftconnecttest」改为 **国内优先**
+  （`connect.rom.miui.com/generate_204` 204 → `www.baidu.com` 200 → 国外兜底），
+  与 macOS / KSU / Windows 一致；国外被墙不再误报「门户成功但网关未放行」。
+- **认证页识别收严**：`isPortalTarget()` 排除 `success` 系列（`redirectortosuccess.jsp` 谎报在线不再被当登录页）；
+  200 直出门户正文单独识别，改从网关 302 取带 queryString 的认证页。
+- **诊断日志**：新增 `[诊断]` 逐探测点行（状态码 / 跳转目标 / 判定），query 与 userIndex 脱敏；
+  `console.log` 进 Loon 内置日志（仪表 → 脚本任务 / 工具 → 日志）；
+  同时写 `$persistentStore['campusnet_diag_log']` 最近 100 行滚动副本，防 App 清日志后无证据。
+  **不记账号、密码、queryString**。
+- **插件**：raw 脚本缓存破坏 `?v=9` → `?v=10`；国内探测域名加入 `[Rule]` 直连；插件日期更新。
+- **验证**：`node --check` 通过；6 场景本地 mock 全过
+  （MIUI 204 在线 / 302 认证页登录 / 百度国内兜底 / 国外兜底 / 服务欠费换下一个 / success.jsp 谎报跳过）。
+
 ## loon-v9 · 2026-10-25
 
 - **请求强制直连**：所有探测/登录请求加 `node: "DIRECT"`，Loon 切到全局代理时不再误判「已在线」

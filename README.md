@@ -16,7 +16,7 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 
 装好后进插件「设置」填：学号、密码、校园网 WiFi 名称（默认 `iHBUT`）。
 
-要求：Loon 3.5.1(983)+、iOS 14+。
+要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=10`（loon v10，国内验收口径 + 诊断日志）。
 
 ## 文件
 
@@ -39,7 +39,15 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 | `network-changed` | 切网瞬间 | 连上校园网 WiFi 立即认证 |
 | `cron` | 全天每 2 分钟 | 检测掉线并重连（不在校园网时零请求） |
 
-失败通知 10 分钟最多一条，避免刷屏；日志可在 Loon 脚本页面查看。
+失败通知 10 分钟最多一条，避免刷屏。
+
+## 日志在哪看
+
+- 脚本 `console.log`（含 `[诊断]` 逐探测点行）在 Loon App 的日志面板：
+  「仪表 → 脚本任务」或「工具 → 日志」（不同版本入口名称略有差异）。
+- 另外最近 100 行诊断记录写在本机 `$persistentStore['campusnet_diag_log']`，
+  App 清日志后仍留底；只含状态码 / 跳转目标，**不含账号、密码、queryString**。
+- 不写文件、不上传服务器。Mac 端的日志窗口/留存设置是桌面 App 独有功能，插件没有对应 UI。
 
 ## 说明
 
