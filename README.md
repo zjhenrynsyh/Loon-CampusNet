@@ -16,7 +16,7 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 
 装好后进插件「设置」填：学号、密码、你的校园网 WiFi 名称（留空则不限制）。
 
-要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=20`（loon v20：修复假在线跳过认证；国外探测点换 gstatic 且不再判在线）。
+要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=21`（loon v21：四端对齐自动认证开关 + 版本号纠正 + 假在线修复）。
 
 ## 文件
 
