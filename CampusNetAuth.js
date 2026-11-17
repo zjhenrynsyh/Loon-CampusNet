@@ -77,9 +77,11 @@ const CONFIG = {
   // 国内验收点（与 macOS / KSU / Windows 一致的主口径）：204/200=已放行；302→认证页=离线
   // 国外点只做兜底：国内网对它们常不可达，不能拿它们当唯一验收口径
   domesticProbes: ["http://connect.rom.miui.com/generate_204", "http://www.baidu.com/"],
+  // 2026-11-17 修复：apple CNA 探测页在未认证校园网也返回 200，曾致误判在线跳过认证；
+  // 换成 gstatic generate_204（真放行才 204，与 KSU/Mac 一致）
   foreignProbes: [
+    "http://www.gstatic.com/generate_204",
     String(arg.probeURL || "http://www.msftconnecttest.com/connecttest.txt"),
-    "http://captive.apple.com/hotspot-detect.html",
   ],
   // 校园网 WiFi 名称（多个用逗号分隔；留空=不限制，任意网络都尝试）
   // Loon 通过 $config.getConfig() 暴露当前 SSID，非校园网时直接退出，零流量
@@ -387,7 +389,9 @@ async function captiveProbe() {
   let anyResponse = false;
 
   // 1) 国内验收（主口径）：MIUI generate_204 → 百度
-  // 2) 国外兜底：国内点全不可达时才用，且 200 才算在线
+  // 2) 国外探测（2026-11-17 修复）：只用于识别「劫持到认证页」，不再凭它判在线
+  //    事故：captive.apple.com 在未认证校园网也 200，曾据此误判在线→跳过自动认证。
+  //    现与 KSU cn_cn_ok / Windows DomesticOnline 对齐：在线只认国内点。
   const groups = [["国内", CONFIG.domesticProbes], ["国外", CONFIG.foreignProbes]];
   for (const group of groups) {
     for (const url of group[1]) {
@@ -398,7 +402,7 @@ async function captiveProbe() {
         diag("状态判定: 离线(劫持到认证页) | " + lines.join(" | "));
         return { online: false, portal: p.portal, detail: lines.join(" | ") };
       }
-      if (p.online) {
+      if (p.online && group[0] === "国内") {
         diag("状态判定: 已放行(online) | " + lines.join(" | "));
         return { online: true, detail: lines.join(" | ") };
       }
