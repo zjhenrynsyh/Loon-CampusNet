@@ -91,11 +91,14 @@ const CONFIG = {
   // v18：是否「优先上次成功服务」。默认关闭——按用户配置的服务顺序走，
   // 满足教学楼优先校园网(default)、寝室优先联通(LT)这类按地点切换的需求。
   preferLastGood: arg.preferLastGood === true || String(arg.preferLastGood) === "true",
+  // 2026-11-17 四端对齐：自动认证总开关，默认开启（关闭后只检测不登录、下线保持）
+  autoLogin: arg.autoLogin === undefined ? true :
+             (arg.autoLogin === true || String(arg.autoLogin) !== "false"),
 };
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
-const SCRIPT_VERSION = "v19";
+const SCRIPT_VERSION = "v21";
 const STARTED_AT = Date.now();
 const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
@@ -552,6 +555,12 @@ async function submitLogin(q) {
   if (!acquireLock()) {
     console.log("[诊断] 已有运行实例（" + (LOCK_LEASE_MS / 1000) + "s 租约），跳过本次触发");
     return $done();
+  }
+
+  // 2026-11-17 四端对齐：自动认证总开关（对齐 Mac/Windows）。关闭后只跳过，不 POST、不下线。
+  if (!CONFIG.autoLogin) {
+    console.log("[诊断] 自动认证开关已关闭，仅检测状态不登录");
+    return finish("auto_login_disabled");
   }
 
   // 连续失败退避：切网触发立即绕过；cron 在退避窗口内静默跳过，绝不永久停摆
