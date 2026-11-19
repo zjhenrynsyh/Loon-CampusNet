@@ -1,12 +1,12 @@
 #!name = 校园网助手
-#!desc = 手机端校园网自动认证（锐捷/深澜 ePortal V3）。连上校园网 WiFi 自动登录、掉线自动重连。导入插件后在「设置」里填写学号密码即可。v22 新增 Web 管理后台：详情页「主页」或手动脚本「打开管理后台」进入 http://campusnet.local，实时查看状态/日志。需 Loon 3.5.1(983)+。
+#!desc = 手机端校园网自动认证（锐捷/深澜 ePortal V3）。连上校园网 WiFi 自动登录、掉线自动重连。导入插件后在「设置」里填写学号密码即可。v23 新增 Web 管理后台：详情页「主页」或手动脚本「打开管理后台」进入 http://zjhenrynsyh.github.io/campusnet，实时查看状态/日志。需 Loon 3.5.1(983)+。
 #!author = zjhenry
-#!homepage = http://campusnet.local
+#!homepage = http://zjhenrynsyh.github.io/campusnet
 #!system = iOS,iPadOS,macOS
 #!system_version = 14.0
-#!date = 2026-11-19 (v22)
+#!date = 2026-11-19 (v23)
 #!loon_version = 3.5.1(983)
-#!openUrl = http://172.16.54.18
+#!openUrl = http://zjhenrynsyh.github.io/campusnet
 #!tag = 校园网
 
 # ============================================================
@@ -16,7 +16,7 @@
 #      （或从本地文件导入本插件，脚本会自动从 GitHub 拉取，无需单独导入 js）
 #   2. 在插件「设置」里填写学号和密码
 #   3. 启用插件即可；下方 [Rule] 的 DIRECT 规则在分流开启时保证探测不被代理
-#   4. v22 Web 后台：点详情页「主页」或手动脚本「打开管理后台」→ http://campusnet.local
+#   4. v22 Web 后台：点详情页「主页」或手动脚本「打开管理后台」→ http://zjhenrynsyh.github.io/campusnet
 #      （Sub-Store 同款虚拟域名拦截，无需服务器/证书；显示实时状态+日志，30s 自动刷新）
 #   5. 手动脚本「查看更新日志」→ GitHub CHANGELOG.md
 #
@@ -47,25 +47,25 @@ DOMAIN-SUFFIX,baidu.com,DIRECT
 DOMAIN-SUFFIX,msftconnecttest.com,DIRECT
 DOMAIN,captive.apple.com,DIRECT
 # v22 Web 后台虚拟域名：强制直连，确保请求脚本能拦截（不真正连公网）
-DOMAIN,campusnet.local,DIRECT
+DOMAIN,zjhenrynsyh.github.io,DIRECT
 
 [Script]
-# v22 Web 后台：拦截 http://campusnet.local ，脚本直接返回管理页（Sub-Store 同款，无需服务器/证书）
-request if ${url} ~= /^http:\/\/campusnet\.local\//i then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetDashboard.js?v=22") with tag="校园网助手(管理后台)", timeout=20
+# v22 Web 后台：拦截 http://zjhenrynsyh.github.io/campusnet ，脚本直接返回管理页（Sub-Store 同款，无需服务器/证书）
+request if ${url} ~= /^http:\/\/zjhenrynsyh\.github\.io\/campusnet/i then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetDashboard.js?v=23") with tag="校园网助手(管理后台)", timeout=20
 # 定时检测：检测频率可在上方「定时检测频率」里改（已在线时静默退出，零流量）
-cron ${cronExpression} then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=22", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}, ${preferLastGood}, ${autoLogin}}) with enable=true, tag="校园网自动认证(定时)", timeout=300
+cron ${cronExpression} then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=23", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}, ${preferLastGood}, ${autoLogin}}) with enable=true, tag="校园网自动认证(定时)", timeout=300
 # 切网触发：连上校园网 WiFi 的瞬间立即认证（不用等定时器）
-network-changed then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=22", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}, ${preferLastGood}, ${autoLogin}}) with enable=true, tag="校园网自动认证(切网触发)", timeout=300
+network-changed then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=23", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}, ${preferLastGood}, ${autoLogin}}) with enable=true, tag="校园网自动认证(切网触发)", timeout=300
 # 手动入口：打开 Web 管理后台（点通知 → 浏览器进入控制台）
-generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetDashboardOpen.js?v=22") with tag="打开管理后台", img_url="gearshape.system", timeout=30
+generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetDashboardOpen.js?v=23") with tag="打开管理后台", img_url="gearshape.system", timeout=30
 # 手动触发：查看更新日志（在插件里点一下，弹通知 → 点通知打开 GitHub CHANGELOG.md）
-generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetChangelog.js?v=22") with tag="查看更新日志", img_url="doc.text.system", timeout=30
+generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetChangelog.js?v=23") with tag="查看更新日志", img_url="doc.text.system", timeout=30
 # 手动触发：立即检测（绕过失败退避；已在线跳过，未在线照常登录）
-generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=22", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}, ${preferLastGood}, ${autoLogin}}) with tag="立即检测", img_url="arrow.triangle.2.circlepath.system", timeout=120
+generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=23", {${gateway}, ${user}, ${password}, ${ssid}, ${serviceOrder}, ${notifyFail}, ${preferLastGood}, ${autoLogin}}) with tag="立即检测", img_url="arrow.triangle.2.circlepath.system", timeout=120
 # 手动工具：查看状态 / 复制诊断日志（点通知复制到剪贴板）
-generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetTools.js?v=22") with tag="查看状态", img_url="chart.bar.system", timeout=30
-generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetTools.js?v=22") with tag="复制诊断日志", img_url="doc.on.doc.system", timeout=30
+generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetTools.js?v=23") with tag="查看状态", img_url="chart.bar.system", timeout=30
+generic then script("https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetTools.js?v=23") with tag="复制诊断日志", img_url="doc.on.doc.system", timeout=30
 
 # —— 旧版 Loon（3.2.1~3.5.0，Build 733+）兼容写法，二选一 ——
-# cron ${cronExpression} script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=22, tag=校园网自动认证(定时), enable=true, argument=[{gateway},{user},{password},{ssid},{serviceOrder},{notifyFail},{preferLastGood},{autoLogin}]
-# network-changed script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=22, tag=校园网自动认证(切网触发), enable=true, argument=[{gateway},{user},{password},{ssid},{serviceOrder},{notifyFail},{preferLastGood},{autoLogin}]
+# cron ${cronExpression} script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=23, tag=校园网自动认证(定时), enable=true, argument=[{gateway},{user},{password},{ssid},{serviceOrder},{notifyFail},{preferLastGood},{autoLogin}]
+# network-changed script-path=https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetAuth.js?v=23, tag=校园网自动认证(切网触发), enable=true, argument=[{gateway},{user},{password},{ssid},{serviceOrder},{notifyFail},{preferLastGood},{autoLogin}]

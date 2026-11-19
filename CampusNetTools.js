@@ -2,7 +2,7 @@
  * 校园网助手 · 手动小工具（Generic Script）
  * 用法：在插件里点对应入口，脚本按 $script.name 分流，不写文件、不上传。
  */
-const VER = "v22";
+const VER = "v23";
 const LOG_KEY = "campusnet_diag_log";
 const RESULT_KEY = "campusnet_last_result";
 

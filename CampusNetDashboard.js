@@ -2,7 +2,7 @@
  * 校园网助手 · Web 管理后台（Loon Request Script）
  * ============================================================
  * 原理：Sub-Store 同款「虚拟主机名 + 请求脚本直接返回」——
- *   浏览器访问 http://campusnet.local ，Loon 的 http-request 脚本在请求发出前拦截，
+ *   浏览器访问 http://zjhenrynsyh.github.io/campusnet ，Loon 的 http-request 脚本在请求发出前拦截，
  *   用 $done({response:{...}}) 直接返回本脚本生成的单页 HTML，无需外部服务器、无需 MitM 证书。
  *
  * 实时数据来源：读认证脚本写入的 $persistentStore（状态/日志/在线信息/版本等）。
@@ -13,7 +13,7 @@
  *
  * 版本：v22（随 Loon 插件 v22 发布）
  */
-const DASH_VERSION = "v22";
+const DASH_VERSION = "v23";
 
 // ---- 与认证脚本一致的持久化 key ----
 const K = {
@@ -204,7 +204,7 @@ function htmlPage(d) {
     "<div class='outcome' id='outcome'>" + esc(d.outcome) + "</div></div>" +
     "<div class='card'><div class='sec-title' style='margin-top:0'>实时数据</div><div class='grid'>" + rows + "</div></div>" +
     "<div class='sec-title'>操作</div><div class='btns'>" +
-    "<a class='btn primary' href='http://campusnet.local/?action=check'>立即检测</a>" +
+    "<a class='btn primary' href='http://zjhenrynsyh.github.io/campusnet/?action=check'>立即检测</a>" +
     "<a class='btn' href='javascript:location.href=location.pathname'>刷新</a>" +
     "<a class='btn' href='#' onclick='copyLog();return false'>复制日志</a>" +
     "</div><div class='note'>「立即检测」仅清除失败退避、让下个定时任务正常执行，不会主动下线或强制重新认证。账号密码由插件设置保存，页面不显示。</div>" +
@@ -218,7 +218,7 @@ function htmlPage(d) {
     "document.querySelectorAll('.kv').forEach(function(el){var k=el.querySelector('.k').textContent;if(map[k]!=null)el.querySelector('.v').textContent=map[k];});" +
     "document.getElementById('logs').innerHTML=(d.logs&&d.logs.length)?d.logs.map(function(l){return '<div class=\"logline\">'+l.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';}).join(''):'<div class=\"logline muted\">暂无诊断日志</div>';" +
     "}" +
-    "function tick(){fetch('http://campusnet.local/api/status',{cache:'no-store'}).then(function(r){return r.json();}).then(apply).catch(function(){});}" +
+    "function tick(){fetch('http://zjhenrynsyh.github.io/campusnet/api/status',{cache:'no-store'}).then(function(r){return r.json();}).then(apply).catch(function(){});}" +
     "function copyLog(){var t=Array.prototype.map.call(document.querySelectorAll('#logs .logline'),function(e){return e.textContent;}).join('\\n');if(navigator.clipboard)navigator.clipboard.writeText(t);var f=document.getElementById('flash');f.textContent='日志已复制到剪贴板';f.style.display='block';setTimeout(function(){f.style.display='none';},2000);}" +
     "setInterval(tick,30000);" +
     "</script></body></html>";
@@ -245,8 +245,8 @@ function respond(response) {
     notice = "已清除待执行指令。";
   }
 
-  // JSON 接口（前端定时拉取）
-  if (parsed.path.indexOf("/api/status") === 0) {
+  // JSON 接口（前端定时拉取）：兼容有无 /campusnet 路径前缀
+  if (/\/api\/status(?:\?|$)/.test(parsed.path) || parsed.path.indexOf("/api/status") === 0) {
     respond(jsonResponse(collect()));
     return;
   }
@@ -258,7 +258,7 @@ function respond(response) {
     "Cache-Control": "no-store"
   };
   if (action) {
-    headers["Refresh"] = "2; url=http://campusnet.local/";
+    headers["Refresh"] = "2; url=http://zjhenrynsyh.github.io/campusnet/";
   }
   respond({ status: 200, headers: headers, body: html });
 })();

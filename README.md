@@ -16,18 +16,18 @@ https://raw.githubusercontent.com/zjhenrynsyh/Loon-CampusNet/main/CampusNetHelpe
 
 装好后进插件「设置」填：学号、密码、你的校园网 WiFi 名称（留空则不限制）。
 
-要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=22`（loon v22：Web 管理后台）。
+要求：Loon 3.5.1(983)+、iOS 14+。当前脚本 `?v=23`（loon v23：修复后台打不开 + 跳转链接）。
 
-## Web 管理后台（v22 新增）
+## Web 管理后台（v22 新增，v23 修复可访问）
 
-插件详情页点「主页」，或在插件里手动运行「打开管理后台」，浏览器进入 `http://campusnet.local`：
+插件详情页点「主页」，或在插件里手动运行「打开管理后台」，浏览器进入 `http://zjhenrynsyh.github.io/campusnet`：
 
 - 实时显示在线状态、上次检测结果/耗时、脚本版本、上次服务、在线设备索引（打码）、最近保活、失败退避、诊断日志
 - 每 30 秒自动刷新；「立即检测」按钮清退避让下次检测立即执行，**不会强制下线**
 - Sub-Store 同款虚拟域名拦截，脚本本地生成页面——不需要服务器、不装证书、不上传数据
 - 账号密码只存本机 Loon 设置，页面不显示；日志已脱敏
 
-> `campusnet.local` 是本地虚拟域名，只有装了本插件的 Loon 能打开；离开 Loon 代理环境访问不到属正常。
+> `zjhenrynsyh.github.io/campusnet` 是脚本拦截用的虚拟路径：装了本插件并开启 Loon 时，请求在发出前由脚本直接返回控制台页面，不会真的访问 GitHub。离开 Loon 代理环境打开属正常（会 404）。
 
 ## 文件
 

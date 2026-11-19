@@ -1,5 +1,11 @@
 # 更新记录
 
+## loon-v23 · 2026-11-19 ★★ 修 Web 后台打不开 + 跳转链接
+
+- v22 的 `campusnet.local` 域名不存在且被 Loon bypass，后台打不开；截图通知里的链接来自 `#!openUrl`（v22 漏改、还指向网关）。
+- v23 改用真实可解析的 `zjhenrynsyh.github.io/campusnet`（走 http，免证书），`openUrl`、主页、拦截规则、脚本内 URL 全部对齐；修 30s 自动刷新的路径判断。
+- 更新插件即可拉取 v23；点详情页「主页」或「打开管理后台」直达控制台。
+
 ## loon-v22 · 2026-11-19 ★ Web 管理后台（Sub-Store 式）
 
 - **Web 后台**：打开插件详情页「主页」或手动脚本「打开管理后台」，进入 `http://campusnet.local` 控制台。Sub-Store 同款虚拟域名拦截，脚本直接返回页面——无需服务器、无需装证书、不上传任何数据。
