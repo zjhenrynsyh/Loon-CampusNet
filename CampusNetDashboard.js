@@ -13,7 +13,7 @@
  *
  * 版本：v22（随 Loon 插件 v22 发布）
  */
-const DASH_VERSION = "v23";
+const DASH_VERSION = "v24";
 
 // ---- 与认证脚本一致的持久化 key ----
 const K = {
@@ -113,7 +113,7 @@ function collect() {
     goodSvc: read(K.goodSvc) || "—",
     backoffLeft: backoffUntil > Date.now() ? Math.ceil((backoffUntil - Date.now()) / 60000) + " 分钟" : "无",
     failStreak: read(K.failStreak) || "0",
-    logs: lines.slice(-40),
+    logs: lines.slice(-20).reverse(),   // v24：倒序展示最新在前，只留 20 行省内存
     loon: (function () { try { return String(typeof $loon !== "undefined" ? $loon : ""); } catch (e) { return ""; } })()
   };
 }
@@ -198,29 +198,21 @@ function htmlPage(d) {
     ".flash{background:#12331f;border:1px solid #1d6b3a;color:#9ff0b8;border-radius:10px;padding:10px 12px;font-size:13px;margin-top:12px;display:none}" +
     "</style></head><body>" +
     "<h1>校园网助手 · 控制台</h1>" +
-    "<div class='sub'>Sub-Store 式本地后台 · 每 30 秒自动更新 · " + esc(d.generatedAt.slice(11, 19)) + " UTC</div>" +
+    "<div class='sub'>本地后台 · 按需快照（零轮询最省电）· " + esc(d.generatedAt.slice(11, 19)) + " UTC</div>" +
     "<div id='flash' class='flash'></div>" +
     "<div class='card'><div class='status'><span class='dot' id='dot'></span><b id='statusText'>" + esc(statusText) + "</b></div>" +
     "<div class='outcome' id='outcome'>" + esc(d.outcome) + "</div></div>" +
     "<div class='card'><div class='sec-title' style='margin-top:0'>实时数据</div><div class='grid'>" + rows + "</div></div>" +
     "<div class='sec-title'>操作</div><div class='btns'>" +
     "<a class='btn primary' href='http://zjhenrynsyh.github.io/campusnet/?action=check'>立即检测</a>" +
-    "<a class='btn' href='javascript:location.href=location.pathname'>刷新</a>" +
+    "<a class='btn' href='javascript:location.reload()'>刷新</a>" +
     "<a class='btn' href='#' onclick='copyLog();return false'>复制日志</a>" +
-    "</div><div class='note'>「立即检测」仅清除失败退避、让下个定时任务正常执行，不会主动下线或强制重新认证。账号密码由插件设置保存，页面不显示。</div>" +
-    "<div class='sec-title'>诊断日志（最近 40 行）</div><div class='card' id='logs'>" + logHtml + "</div>" +
+    "</div><div class='note'>页面为打开瞬间的快照，不后台轮询（最省电/省内存）；要看最新数据点「刷新」。「立即检测」仅清除失败退避让下个定时任务正常跑，不会下线或强制重认证。账号密码不显示。</div>" +
+    "<div class='sec-title'>诊断日志（最近 20 行 · 最新在前）</div><div class='card' id='logs'>" + logHtml + "</div>" +
     "<script>" +
-    "function apply(d){" +
-    "var on=d.online;document.getElementById('dot').style.background=on?'#34c759':'#ff9f0a';" +
-    "document.getElementById('statusText').textContent=on?'已放行 · 在线':'未放行 / 待检测';" +
-    "document.getElementById('outcome').textContent=d.outcome;" +
-    "var map={'脚本版本':d.script,'后台版本':d.dash,'上次检测':d.lastAt,'检测耗时':d.elapsed+' s','上次服务':d.goodSvc,'在线设备索引':d.userIndex,'最近保活':d.keepalive,'失败退避':d.backoff,'连续失败':d.failStreak+' 次','运行环境':d.loon};" +
-    "document.querySelectorAll('.kv').forEach(function(el){var k=el.querySelector('.k').textContent;if(map[k]!=null)el.querySelector('.v').textContent=map[k];});" +
-    "document.getElementById('logs').innerHTML=(d.logs&&d.logs.length)?d.logs.map(function(l){return '<div class=\"logline\">'+l.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';}).join(''):'<div class=\"logline muted\">暂无诊断日志</div>';" +
-    "}" +
-    "function tick(){fetch('http://zjhenrynsyh.github.io/campusnet/api/status',{cache:'no-store'}).then(function(r){return r.json();}).then(apply).catch(function(){});}" +
-    "function copyLog(){var t=Array.prototype.map.call(document.querySelectorAll('#logs .logline'),function(e){return e.textContent;}).join('\\n');if(navigator.clipboard)navigator.clipboard.writeText(t);var f=document.getElementById('flash');f.textContent='日志已复制到剪贴板';f.style.display='block';setTimeout(function(){f.style.display='none';},2000);}" +
-    "setInterval(tick,30000);" +
+    "function copyLog(){var t=Array.prototype.map.call(document.querySelectorAll('#logs .logline'),function(e){return e.textContent;}).join('\\n');var f=document.getElementById('flash');function ok(){f.textContent='日志已复制到剪贴板';f.style.display='block';setTimeout(function(){f.style.display='none';},2000);}" +
+    "if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(ok,function(){fallback(t,ok);});}else{fallback(t,ok);}}" +
+    "function fallback(t,cb){var ta=document.createElement('textarea');ta.value=t;ta.setAttribute('readonly','');ta.style.position='absolute';ta.style.left='-9999px';document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,t.length);var done=false;try{done=document.execCommand('copy');}catch(e){}document.body.removeChild(ta);if(done)cb();else{var f=document.getElementById('flash');f.textContent='长按日志可手动复制';f.style.display='block';setTimeout(function(){f.style.display='none';},2500);}}" +
     "</script></body></html>";
 }
 

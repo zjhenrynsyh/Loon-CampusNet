@@ -98,7 +98,7 @@ const CONFIG = {
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
-const SCRIPT_VERSION = "v23";
+const SCRIPT_VERSION = "v24";
 const STARTED_AT = Date.now();
 const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
@@ -230,7 +230,7 @@ function httpGet(url) {
   });
 }
 
-function httpPost(url, body) {
+function httpPost(url, body, timeoutMs) {
   return new Promise((resolve) => {
     $httpClient.post({
       url: url,
@@ -240,7 +240,7 @@ function httpPost(url, body) {
       "auto-redirect": false,
       "auto-cookie": true,
       node: "DIRECT",
-      timeout: LOGIN_TIMEOUT_MS,
+      timeout: timeoutMs || LOGIN_TIMEOUT_MS,
     }, (err, resp, data) => {
       if (err) return resolve({ error: String(err) });
       resolve({ status: +(resp.status || 0), headers: resp.headers || {}, body: data || "" });
@@ -462,20 +462,32 @@ async function verifyOnlineQuick() {
 
 // 已在线时按 60s 间隔保活（对齐 Mac/KSU/Win）；失败不影响本轮判定，
 // 会话真失效会在下一轮国内探测时暴露并触发登录。
+// v24 省电优化：保活用 3s 短超时（原 12s，网关不支持保活时每轮白等 12s 极耗电）；
+//   连续失败后进入 30 分钟冷却，避免每 2 分钟白等。成功即清零冷却。
+const KEEPALIVE_FAIL_KEY = "campusnet_keepalive_fail_at";
+const KEEPALIVE_TIMEOUT_MS = 3000;
+const KEEPALIVE_COOLDOWN_MS = 30 * 60 * 1000;
 async function keepaliveIfNeeded() {
   let ui = "";
   try { ui = $persistentStore.read(USERINDEX_KEY) || ""; } catch (e) {}
   if (!ui) return;
-  let last = 0;
+  let last = 0, failAt = 0;
   try { last = +($persistentStore.read(KEEPALIVE_KEY) || 0); } catch (e) {}
+  try { failAt = +($persistentStore.read(KEEPALIVE_FAIL_KEY) || 0); } catch (e) {}
+  // 失败冷却期内跳过（网关不支持保活，省电优先；认证靠每轮国内探测兜底）
+  if (failAt && Date.now() - failAt < KEEPALIVE_COOLDOWN_MS) return;
   if (Date.now() - last < 60 * 1000) return;
   const r = await httpPost("http://" + CONFIG.gateway + "/eportal/InterFace.do?method=keepalive",
-                           "userIndex=" + ui);
+                           "userIndex=" + ui, KEEPALIVE_TIMEOUT_MS);
   if (!r.error) {
-    try { $persistentStore.write(String(Date.now()), KEEPALIVE_KEY); } catch (e) {}
+    try {
+      $persistentStore.write(String(Date.now()), KEEPALIVE_KEY);
+      $persistentStore.write("0", KEEPALIVE_FAIL_KEY);
+    } catch (e) {}
     diag("保活: 已续期（60s 间隔）");
   } else {
-    diag("保活失败（不影响判定）: " + r.error);
+    try { $persistentStore.write(String(Date.now()), KEEPALIVE_FAIL_KEY); } catch (e) {}
+    diag("保活失败（不影响判定，冷却30分钟省电）: " + r.error);
   }
 }
 
