@@ -98,7 +98,7 @@ const CONFIG = {
 // ======================================================
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
-const SCRIPT_VERSION = "v21";
+const SCRIPT_VERSION = "v22";
 const STARTED_AT = Date.now();
 const RUN_ID = new Date().toISOString().slice(11, 19) + "-" + Math.random().toString(36).slice(2, 6);
 
@@ -563,8 +563,20 @@ async function submitLogin(q) {
     return finish("auto_login_disabled");
   }
 
-  // 连续失败退避：切网触发立即绕过；cron 在退避窗口内静默跳过，绝不永久停摆
-  if (isNetworkTrigger()) {
+  // 2026-11-19 v22：Web 后台「立即检测」指令——消费一次性标志，当作立即触发（绕过退避）。
+  // 不触碰会话、不 forceReauth；仅让下个 cron 正常跑一次探测。
+  let dashTriggered = false;
+  try {
+    const cmd = +($persistentStore.read("campusnet_dash_cmd") || 0);
+    if (cmd > 0) {
+      dashTriggered = true;
+      $persistentStore.write("0", "campusnet_dash_cmd");
+      diag("Web 后台指令：立即检测（绕过退避，不强制重认证）");
+    }
+  } catch (e) {}
+
+  // 连续失败退避：切网/后台指令立即绕过；cron 在退避窗口内静默跳过，绝不永久停摆
+  if (isNetworkTrigger() || dashTriggered) {
     clearBackoff();
   } else {
     const rem = backoffRemaining();
